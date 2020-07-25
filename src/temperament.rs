@@ -1,3 +1,4 @@
+#[derive(Debug)]
 enum Tuning {
 	EquaTemp,
 	MeanTemp,
@@ -13,16 +14,19 @@ enum Tuning {
 type TuningType = Tuning;
 
 trait OctaveTuning {
-	fn init_octave() -> [f32; 12];
+	fn init_octave() -> [f64; 12];
 }
 
+fn cents(f1: f64, f2: f64) -> f64 {
+	1200. * (f2 / f1).log2()
+}
 
 struct TuningData {
 	pub note : i8,
-	pub freq_table : [f32; 128],
-	pub fund_table : [f32; 128],
-	pub intervals  : [f32; 12],
-	pub freq_a : f32, lo_tt : f32, hi_tt : f32,
+	pub freq_table : [f64; 128],
+	pub fund_table : [f64; 128],
+	pub intervals  : [f64; 12],
+	pub freq_a : f64, lo_tt : f64, hi_tt : f64,
 	pub tuning : TuningType,
 }
 
@@ -34,7 +38,7 @@ impl Tuning {
 			freq_table: [0.; 128],
 			fund_table: [0.; 128],
 			intervals:  [0.; 12],
-			freq_a: 440.0_f32, lo_tt: 0., hi_tt: 0.
+			freq_a: 440.0_f64, lo_tt: 0., hi_tt: 0.
 		};
 		td.init(td.init_octave());
 		td
@@ -42,18 +46,20 @@ impl Tuning {
 }
 
 impl TuningData {
-	fn init_octave(&self) -> [f32; 12] {
-		let mut e_f = [0.0_f32; 12];
+	fn init_octave(&self) -> [f64; 12] {
+		let mut e_f = [0.0_f64; 12];
+        println!("{:?}", &self.tuning);
 		match &self.tuning {
-			EquaTemp => {
+			Tuning::EquaTemp => {
+				println!("Init EquaTemp");
 				for i in 0..12 {
-					e_f[i] = 2.0_f32.powf( i as f32 / 12.0_f32 );
+					e_f[i] = 2.0_f64.powf( i as f64 / 12.0_f64 );
 				}
 			},
-			MeanTemp => {
-				let P = 5.0_f32.powf(1./4.);
-				let T = 5.0_f32.powf( 1./2. ) / 2.;
-				let S = 8.0_f32 / 5.0_f32.powf(5./4.);
+			Tuning::MeanTemp => {
+				let P = 5.0_f64.powf(1./4.);
+				let T = 5.0_f64.powf( 1./2. ) / 2.;
+				let S = 8.0_f64 / 5.0_f64.powf(5./4.);
 				let Z = T / S;
 				e_f = [
 					1.    ,   Z   ,
@@ -65,7 +71,7 @@ impl TuningData {
 					P*T*T
 				];
 			},
-			Just5Temp => {
+			Tuning::Just5Temp => {
 				// only factors 2,3,5 are used
 				e_f = [
 					1.0  , 16./15.,
@@ -80,7 +86,7 @@ impl TuningData {
 				let Fs = 45./32.;
 				//initJust( jF, Gb, Fs );
 			},
-			KeplTemp => {
+			Tuning::KeplTemp => {
 				let U = 1. ;
 				let cs  = 135. / 128. ; // lemma = 15:16 / 8:9
 				let jM  =   9. /   8. ; // major whole tone
@@ -104,7 +110,7 @@ impl TuningData {
 					jM7
 				];
 			},
-			PythTemp => {
+			Tuning::PythTemp => {
 				// all fifths tuned to 3:2
 				//Wikipedia
 				//					Ab			Eb			Bb		F		C		G		D	A		E		B		F#		C#			G#
@@ -123,7 +129,7 @@ impl TuningData {
 				let Gs = 729./512.;
 				//initJust(pF, Ab, Gs);
 			},
-			HammTemp => {
+			Tuning::HammTemp => {
 				e_f = [
 					88./64.   , // A = 1.375; 20 * 16 * 1.375 = 440 Hz
 					67./46.   ,
@@ -145,8 +151,8 @@ impl TuningData {
 					}
 				}
 			},
-			PtolTemp => {
-				let e_f = [
+			Tuning::PtolTemp => {
+				e_f = [
 					1.0,
 					16. / 15.,
 					9. /  8.,
@@ -161,8 +167,8 @@ impl TuningData {
 					15. /  8.
 				];
 			},
-			ChinTemp => {
-				fn cfrac(x : i64, y : i64) -> f32 { 3.0_f32.powf(x as f32) / 2.0_f32.powf(y as f32) }
+			Tuning::ChinTemp => {
+				fn cfrac(x : i64, y : i64) -> f64 { 3.0_f64.powf(x as f64) / 2.0_f64.powf(y as f64) }
 				e_f = [
 					cfrac( 0, 0), cfrac( 7,11),
 					cfrac( 2, 3), cfrac( 9,14),
@@ -173,7 +179,7 @@ impl TuningData {
 					cfrac( 5, 7)
 				];
 			},
-			Dowlan => {
+			Tuning::Dowland => {
 				e_f = [
 					1./   1.,   33./ 31.,
 					9./   8.,   33./ 28.,
@@ -184,7 +190,7 @@ impl TuningData {
 					396./ 211. 
 				];
 			},
-			Kirnberger => {
+			Tuning::Kirnberger => {
 				e_f = [
 					1./  1.,   256./243.,
 					9./  8.,    32./ 27.,
@@ -195,22 +201,22 @@ impl TuningData {
 				   15./  8. 		
 				];
 			},
-		}
+		};
 		e_f
 	}
-	pub fn lookup(&self, n : i8) -> f32 {
+	pub fn lookup(&self, n : i8) -> f64 {
 		if n < 0 {
-			0.0_f32
+			0.0_f64
 		} else {
 			self.freq_table[n as usize]
 		}
 	}
-	pub fn retune(&mut self, a : f32) {
+	pub fn retune(&mut self, a : f64) {
 		self.freq_a = a;
 		self.init(self.intervals);
 	}
 
-	pub fn init(&mut self, j_f : [f32; 12]) {
+	pub fn init(&mut self, j_f : [f64; 12]) {
 		self.init_intervals(j_f);
 		for i in 0..128 {
 			self.freq_table[i] = self.freq_a;
@@ -227,20 +233,20 @@ impl TuningData {
 		}
 	}
 
-	pub fn init_intervals(&mut self, j_f : [f32; 12]) {
+	pub fn init_intervals(&mut self, j_f : [f64; 12]) {
 		for i in 0..12 {
 			self.intervals[i] = j_f[i];
 		}
 	}
 
-	pub fn note_octave(&self, i : usize) -> f32 {
-		2.0_f32.powf((((i as i32 + 3) / 12) - 6) as f32)
+	pub fn note_octave(&self, i : usize) -> f64 {
+		2.0_f64.powf((((i as i32 + 3) / 12) - 6) as f64)
 	}
 
 	pub fn modulate(&mut self, i : i8) {
 	}
 
-	pub fn init_just(&mut self, j_f : [f32; 12], g_flat : f32, f_sharp : f32) {
+	pub fn init_just(&mut self, j_f : [f64; 12], g_flat : f64, f_sharp : f64) {
 	}
 
 	pub fn init_temp(T : Tuning) -> Tuning {
@@ -248,5 +254,16 @@ impl TuningData {
 	}
 
 	pub fn nullify(i : i8) {
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	#[test]
+	fn ptol() {
+		let ptol = Tuning::new(Tuning::PtolTemp);
+		assert_eq!( ptol.lookup(60), 264. );
+		assert_eq!( ptol.lookup(64), 330. );
 	}
 }
