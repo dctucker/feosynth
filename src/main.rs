@@ -1,7 +1,10 @@
-include!("temperament.rs");
+include!("adsr.rs");
+include!("oscillator.rs");
+//include!("temperament.rs");
+
 fn temperaments() {
-	let equal = Tuning::new(Tuning::EquaTemp);
-	let other = Tuning::new(Tuning::PtolTemp);
+	let equal = &TUNINGS[&Tuning::EquaTemp];
+	let other = &TUNINGS[&Tuning::PtolTemp];
 	for n in 57..70 {
 		let e = equal.lookup(n);
 		let c = other.lookup(n);
@@ -14,7 +17,6 @@ fn temperaments() {
 	}
 }
 
-include!("adsr.rs");
 fn adsr() {
 	let mut adsr = ADSR::new();
 	adsr.gate_open();
@@ -30,6 +32,11 @@ fn adsr() {
 	}
 }
 
+fn oscillator() {
+	let mut osc = Oscillator::new();
+}
+
 fn main() {
-	adsr();
+	temperaments();
+	oscillator();
 }

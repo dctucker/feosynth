@@ -99,19 +99,15 @@ impl Gate for ADSR {
 	}
 }
 
-#[cfg(test)]
-mod adsr_tests {
-	use super::*;
-	#[test]
-	fn adsr() {
-		let mut adsr = ADSR::new();
-		assert_eq!(adsr.val, 0.);
-		adsr.gate_open();
-		adsr.run();
-		assert!(adsr.val > 0., "adsr.val <= 0");
-		assert_eq!(adsr.stage, Stage::Attack);
+#[test]
+fn test_adsr() {
+	let mut adsr = ADSR::new();
+	assert_eq!(adsr.val, 0.);
+	adsr.gate_open();
+	adsr.run();
+	assert!(adsr.val > 0., "adsr.val <= 0");
+	assert_eq!(adsr.stage, Stage::Attack);
 
-		adsr.gate_close();
-		assert_eq!(adsr.stage, Stage::Release);
-	}
+	adsr.gate_close();
+	assert_eq!(adsr.stage, Stage::Release);
 }

@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 enum Tuning {
 	EquaTemp,
 	MeanTemp,
@@ -48,10 +48,10 @@ impl Tuning {
 impl TuningData {
 	fn init_octave(&self) -> [f64; 12] {
 		let mut e_f = [0.0_f64; 12];
-        println!("{:?}", &self.tuning);
+        //println!("{:?}", &self.tuning);
 		match &self.tuning {
 			Tuning::EquaTemp => {
-				println!("Init EquaTemp");
+				//println!("Init EquaTemp");
 				for i in 0..12 {
 					e_f[i] = 2.0_f64.powf( i as f64 / 12.0_f64 );
 				}
@@ -229,7 +229,7 @@ impl TuningData {
 	pub fn init_fund(&mut self) {
 		for i in 0..12 {
 			self.fund_table[i] = self.freq_table[69 + i];
-			println!("Init Interval {} = {}", i, self.fund_table[i]);
+			//println!("Init Interval {} = {}", i, self.fund_table[i]);
 		}
 	}
 
@@ -257,13 +257,25 @@ impl TuningData {
 	}
 }
 
-#[cfg(test)]
-mod tests {
-	use super::*;
-	#[test]
-	fn ptol() {
-		let ptol = Tuning::new(Tuning::PtolTemp);
-		assert_eq!( ptol.lookup(60), 264. );
-		assert_eq!( ptol.lookup(64), 330. );
-	}
+type Temperament = Tuning;
+
+#[macro_use]
+extern crate lazy_static;
+use std::collections::HashMap;
+lazy_static! {
+	static ref TUNINGS: HashMap<TuningType, TuningData> = {
+		use Tuning::*;
+		let mut hash: HashMap<Tuning, TuningData> = HashMap::new();
+		for temp in &[EquaTemp, MeanTemp, Just5Temp, KeplTemp, PythTemp, HammTemp, PtolTemp, ChinTemp, Dowland, Kirnberger] {
+			hash.insert(*temp, Tuning::new(*temp));
+		}
+		hash
+	};
+}
+
+#[test]
+fn test_temperaments() {
+	let ptol = &TUNINGS[&Tuning::PtolTemp];
+	assert_eq!( ptol.lookup(60), 264. );
+	assert_eq!( ptol.lookup(64), 330. );
 }
