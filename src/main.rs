@@ -33,7 +33,7 @@ fn adsr() {
 }
 
 fn oscillator() {
-	let mut osc = Oscillator::new();
+	let mut osc = Oscillator::new(Waveforms::Sine);
 }
 
 fn main() {

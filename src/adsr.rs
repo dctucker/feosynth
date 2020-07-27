@@ -7,8 +7,7 @@ trait Gate {
 	fn gate_close(&mut self);
 }
 
-#[derive(PartialEq)]
-#[derive(Debug)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 enum Stage {
 	Off,
 	Attack,
@@ -18,6 +17,7 @@ enum Stage {
 }
 type StageType = Stage;
 
+#[derive(Copy, Clone)]
 struct ADSR {
 	stage : StageType,
 	a: f64, d: f64, s: f64, r: f64,
