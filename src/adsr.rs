@@ -16,14 +16,15 @@ enum Stage {
 	Release
 }
 type StageType = Stage;
+type Seconds = f64;
 
 #[derive(Copy, Clone)]
 struct ADSR {
 	stage : StageType,
-	a: f64, d: f64, s: f64, r: f64,
-	da: f64, dd: f64, ds: f64, dr: f64,
+	val: Sample,
 	clk: u64,
-	val: f64,
+	a: Seconds, d: Seconds, s: Sample, r: Seconds,
+	da: Frequency, dd: Frequency, dr: Frequency,
 }
 
 use Stage::*;
@@ -33,28 +34,28 @@ impl ADSR {
 	pub fn new() -> ADSR {
 		let mut adsr = ADSR {
 			stage: Off,
-			a: 0.1, d: 1.0, s: 0.75, r: 0.25,
-			da: 0., dd: 0., ds: 0., dr: 0.,
+			val: 0.,
 			clk: 0,
-			val: 0.
+			a: 0.1, d: 1.0, s: 0.75, r: 0.25,
+			da: 0., dd: 0., dr: 0.,
 		};
 		adsr.calc();
 		adsr
 	}
 	pub fn calc(&mut self) {
-		const k: f64 = SAMPLE_RATE as f64 / ADSR_DIVISOR as f64;
-		self.da = 1.0_f64 / (self.a * k);
-		self.dd = 1.0_f64 / (self.d * k);
-		self.dr = 1.0_f64 / (self.r * k);
+		const k: Frequency = SAMPLE_RATE as Frequency / ADSR_DIVISOR as Frequency;
+		self.da = 1. / (self.a * k);
+		self.dd = 1. / (self.d * k);
+		self.dr = 1. / (self.r * k);
 	}
-	pub fn set(&mut self, a: f64, d: f64, s: f64, r: f64) {
+	pub fn set(&mut self, a: Seconds, d: Seconds, s: Sample, r: Seconds) {
 		if a >= 0.0 { self.a = 15.0 * a.powf(6.0) + 0.01; }
 		if d >= 0.0 { self.d =  5.0 * d.powf(2.0) + 0.01; }
 		if s >= 0.0 { self.s = s; }
 		if r >= 0.0 { self.r = 15.0 * r.powf(6.0) + 0.01; }
 		self.calc();
 	}
-	pub fn run(&mut self) -> f64 {
+	pub fn run(&mut self) -> Sample {
 		match self.stage {
 			Sustain => {
 				if (self.clk | ADSR_MASK) != 0 {

@@ -13,7 +13,7 @@ fn temperaments() {
 		println!("Note {}: {} Hz", n, equal.lookup(n));
 		println!("Note {}: {} Hz", n, other.lookup(n));
 		*/
-		println!("Difference {}: {}", n, diff);
+		println!("{}: {} - {} = {}", n, c, e, diff);
 	}
 }
 
@@ -33,10 +33,11 @@ fn adsr() {
 }
 
 fn oscillator() {
-	let mut osc = Oscillator::new(Waveforms::Sine);
+	let mut _osc = Oscillator::new(Waveforms::Sine);
 }
 
 fn main() {
+	adsr();
 	temperaments();
 	oscillator();
 }
