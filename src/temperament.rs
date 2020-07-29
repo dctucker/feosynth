@@ -48,6 +48,12 @@ impl Tuning {
 	}
 }
 
+fn pow2i(x: u32) -> Frequency {
+	2u32.pow(x) as Frequency
+}
+fn pow3i(x: u32) -> Frequency {
+	3u32.pow(x) as Frequency
+}
 fn pow2(x: Frequency) -> Frequency {
 	(2.0 as Frequency).powf(x)
 }
@@ -186,7 +192,7 @@ impl TuningData {
 				self.init(e_f);
 			},
 			Tuning::ChinTemp => {
-				fn cfrac(x : i64, y : i64) -> Frequency { pow3(x as Frequency) / pow2(y as Frequency) }
+				fn cfrac(x : u32, y : u32) -> Frequency { pow3i(x) / pow2i(y) }
 				e_f = [
 					cfrac( 0, 0), cfrac( 7,11),
 					cfrac( 2, 3), cfrac( 9,14),

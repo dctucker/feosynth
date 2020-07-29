@@ -1,38 +1,35 @@
 use rand::Rng;
+use std::num::Wrapping;
 use std::f64::consts::PI;
 
 include!("temperament.rs");
 
 
-const TABLE_SIZE: usize = 524288;
-const SHIFT: u32 = 32 - 19;
-const resolution: f64 = 4294967295.;
+const TABLE_BITS: usize = 19;
+const TABLE_SIZE: usize = 1 << TABLE_BITS;
+const SHIFT: u32 = 32 - TABLE_BITS as u32;
+const resolution: f64 = (1_i64 << 32) as f64;
 
 type Index = u32;
 
 
 #[derive(Clone, Copy)]
 struct Counter {
-	phase: Index,
-	incr: Index,
-	bits: Index,
-}
-impl Into<Index> for Counter {
-	fn into(self) -> Index {
-		self.phase >> self.bits
-	}
+	phase: Wrapping<Index>,
+	incr: Wrapping<Index>,
+	bits: Wrapping<Index>,
 }
 impl Into<usize> for Counter {
 	fn into(self) -> usize {
-		(self.phase >> self.bits) as usize
+		(self.phase.0 >> self.bits.0) as usize
 	}
 }
 impl Counter {
 	pub fn new() -> Counter {
 		Counter {
-			phase: 0 as Index,
-			incr: 1 as Index,
-			bits: SHIFT as Index,
+			phase: Wrapping(0_u32),
+			incr: Wrapping(1_u32),
+			bits: Wrapping(SHIFT),
 		}
 	}
 	fn calc_freq(f: f64) -> f64 {
@@ -40,7 +37,7 @@ impl Counter {
 		f * dsr
 	}
 	fn set_freq(&mut self, f: Frequency) {
-		self.incr = Self::calc_freq(f) as Index;
+		self.incr = Wrapping(Self::calc_freq(f) as u32);
 	}
 	/*
 	fn note_freq(temper: &Temperament, n: u8) -> Frequency {
@@ -51,19 +48,22 @@ impl Counter {
 	}
 	*/
 	fn set_shift(&mut self, i: Index){
-		self.bits = i;
+		self.bits.0 = i;
 	}
 	fn increment(&mut self) {
 		self.phase += self.incr;
 	}
 	fn set_phase(&mut self, i: u8) {
-		self.phase = ((i as Index) << self.bits).into();
+		self.phase = Wrapping(((i as Index) << self.bits.0).into());
 	}
-	fn int(&self) -> Index { // remainder as integer component
-		self.phase & (( 2 << self.bits ) - 1)
+	fn int(&self) -> Index {
+		self.phase.0 >> self.bits.0
+	}
+	fn modulo(&self) -> Index { // remainder as integer component
+		self.phase.0 & (( 2 << self.bits.0 ) - 1)
 	}
 	fn frac(&self) -> f64 { // remainder as a fraction
-		self.int() as f64 / (1 << self.bits) as f64
+		self.modulo() as f64 / (1 << self.bits.0) as f64
 	}
 }
 
@@ -96,8 +96,8 @@ impl WaveTable {
 		ret
 	}
 	fn lookup(&self, phase: &mut Counter) -> Sample {
-		let y0: Sample = self.table[phase.phase as usize];
-		let y1: Sample = self.table[1 + phase.phase as usize];
+		let y0: Sample = self.table[phase.phase.0 as usize];
+		let y1: Sample = self.table[1 + phase.phase.0 as usize];
 		let f0: Sample = phase.frac();
 		let f1: Sample = 1. - f0;
 		phase.increment();
@@ -300,6 +300,40 @@ impl Oscillator {
 	}
 }
 
+/*
+impl Oscillator {
+	fn generate(out: [Vec<f64>; 2]) {
+		let mut o: Sample = 0.;
+		let mut sL: Sample = 0.;
+		let mut sR: Sample = 0.;
+
+		for i in 0..frames_per_buf {
+			sL = 0.0;
+
+			for n in low_note..high_note {
+				let note = &notes[n];
+				if note.num != 0 {
+					do_adsr(n);
+				}
+				if note.num != 0 {
+					sL += wf.lookup(note) * note.amp * note.vel;
+				}
+			}
+			clk += 1;
+			
+			//o = applyEffects(sL);
+			
+			sL = o * pan.amp_l;
+			sR = o * pan.amp_r;
+			
+			out[0][i] = sL;
+			out[1][i] = sR;
+		}
+		//paContinue
+	}
+}
+*/
+
 #[macro_use]
 extern crate lazy_static;
 use std::collections::HashMap;
@@ -317,4 +351,17 @@ lazy_static! {
 #[test]
 fn test_oscillator() {
 	Oscillator::new(Waveforms::Saw);
+}
+
+#[test]
+fn test_counter() {
+	assert_eq!(1 << 19, 524288);
+	let mut c = Counter::new();
+	let size = TABLE_SIZE as u32;
+	c.set_freq(SAMPLE_RATE as Frequency / 4.);
+	assert_eq!(c.int(), 0);
+	c.increment(); assert_eq!(c.int(), size/4);
+	c.increment(); assert_eq!(c.int(), size/2);
+	c.increment(); assert_eq!(c.int(), 3*size/4);
+	c.increment(); assert_eq!(c.int(), 0);
 }
