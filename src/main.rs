@@ -1,5 +1,6 @@
 include!("adsr.rs");
 include!("oscillator.rs");
+include!("audio.rs");
 //include!("temperament.rs");
 
 fn temperaments() {
@@ -40,4 +41,8 @@ fn main() {
 	adsr();
 	temperaments();
 	oscillator();
+	let sys = audio::System::new();
+	println!("Sample format: {:?}", sys.sample_format());
+	println!("Config = {:?}", sys.config);
+	sys.run_config();
 }
