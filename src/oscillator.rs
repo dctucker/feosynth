@@ -2,42 +2,51 @@ use rand::Rng;
 use std::num::Wrapping;
 use std::f64::consts::PI;
 
-include!("temperament.rs");
-
+use super::types::{SampleRate, Frequency, Sample};
+use super::audio::SampleRated;
+use super::adsr::*;
+use super::temperament::{Tuning,TuningData};
 
 const TABLE_BITS: usize = 19;
 const TABLE_SIZE: usize = 1 << TABLE_BITS;
 const SHIFT: u32 = 32 - TABLE_BITS as u32;
 const resolution: f64 = (1_i64 << 32) as f64;
 
-type Index = u32;
-
+type TablePos = u32;
 
 #[derive(Clone, Copy)]
 struct Counter {
-	phase: Wrapping<Index>,
-	incr: Wrapping<Index>,
-	bits: Wrapping<Index>,
+	phase: Wrapping<TablePos>,
+	incr: Wrapping<TablePos>,
+	bits: Wrapping<TablePos>,
+	dsr: f64,
 }
 impl Into<usize> for Counter {
 	fn into(self) -> usize {
 		(self.phase.0 >> self.bits.0) as usize
 	}
 }
+impl SampleRated for Counter {
+	fn set_sample_rate(&mut self, sample_rate: SampleRate) {
+		self.dsr = resolution / sample_rate as f64;
+	}
+}
 impl Counter {
-	pub fn new() -> Counter {
-		Counter {
+	pub fn new(sample_rate: SampleRate) -> Counter {
+		let mut c = Counter {
 			phase: Wrapping(0_u32),
 			incr: Wrapping(1_u32),
 			bits: Wrapping(SHIFT),
-		}
+			dsr: 0.,
+		};
+		c.set_sample_rate(sample_rate);
+		c
 	}
-	fn calc_freq(f: f64) -> f64 {
-		const dsr: f64 = resolution / SAMPLE_RATE as f64;
-		f * dsr
+	fn calc_freq(&self, f: f64) -> f64 {
+		f * self.dsr
 	}
 	fn set_freq(&mut self, f: Frequency) {
-		self.incr = Wrapping(Self::calc_freq(f) as u32);
+		self.incr = Wrapping(self.calc_freq(f) as u32);
 	}
 	/*
 	fn note_freq(temper: &Temperament, n: u8) -> Frequency {
@@ -47,19 +56,19 @@ impl Counter {
 		self.incr = Self::note_freq(freq) as u32;
 	}
 	*/
-	fn set_shift(&mut self, i: Index){
+	fn set_shift(&mut self, i: TablePos){
 		self.bits.0 = i;
 	}
 	fn increment(&mut self) {
 		self.phase += self.incr;
 	}
 	fn set_phase(&mut self, i: u8) {
-		self.phase = Wrapping(((i as Index) << self.bits.0).into());
+		self.phase = Wrapping(((i as TablePos) << self.bits.0).into());
 	}
-	fn int(&self) -> Index {
+	fn int(&self) -> TablePos {
 		self.phase.0 >> self.bits.0
 	}
-	fn modulo(&self) -> Index { // remainder as integer component
+	fn modulo(&self) -> TablePos { // remainder as integer component
 		self.phase.0 & (( 2 << self.bits.0 ) - 1)
 	}
 	fn frac(&self) -> f64 { // remainder as a fraction
@@ -68,7 +77,7 @@ impl Counter {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-enum Waveforms {
+pub enum Waveforms {
 	Sine,
 	Square,
 	Triangle,
@@ -76,14 +85,11 @@ enum Waveforms {
 	Noise,
 }
 
-type Sample = f64;
-
 struct WaveTable {
 	table_size: usize,
 	table: Vec<Sample>,
 	//i64 tableFactor
 }
-type Waveform = WaveTable;
 
 impl WaveTable {
 	pub fn new(waveform: Waveforms) -> WaveTable {
@@ -159,6 +165,8 @@ impl WaveTable {
 #[derive(Clone, Copy)]
 struct Note {
 	phase: Counter,
+	amp: Sample,
+	flt: Sample,
 	amp_env: ADSR,
 	flt_env: ADSR,
 	down: bool,
@@ -166,11 +174,13 @@ struct Note {
 	num: i8,
 }
 impl Note {
-	pub fn new() -> Note {
+	pub fn new(sample_rate: SampleRate) -> Note {
 		Note {
-			phase: Counter::new(),
-			amp_env: ADSR::new(),
-			flt_env: ADSR::new(),
+			phase: Counter::new(sample_rate),
+			amp: 0.,
+			amp_env: ADSR::new(sample_rate),
+			flt: 0.,
+			flt_env: ADSR::new(sample_rate),
 			down: false,
 			vel: 0.,
 			num: 0,
@@ -179,7 +189,7 @@ impl Note {
 }
 
 const max_poly: usize = 128;
-struct Oscillator {
+pub struct Oscillator {
 	active: bool,
 
 	//filtLP1: Filter, filtHP1: Filter,
@@ -194,9 +204,10 @@ struct Oscillator {
 	
 	//lfo: WaveTable,
 	//lfoNote: Note,
-	wf: Waveform,
+	wf: WaveTable,
 	
-	temper: TuningType,
+	tuning_preset: Tuning,
+	temperament: TuningData,
 	sus: i8, poly: usize,
 	low_note: usize, high_note: usize, cur_note: usize,
 	//hi_assign: usize, lo_assign: usize,
@@ -207,11 +218,11 @@ struct Oscillator {
 }
 
 impl Oscillator {
-	pub fn new(waveform: Waveforms) -> Oscillator {
-		println!("Oscillator::new");
+	pub fn new(sample_rate: SampleRate, waveform: Waveforms) -> Oscillator {
 		let mut osc = Oscillator {
-			notes: vec![Note::new(); 128],
-			temper: Tuning::EquaTemp,
+			notes: vec![Note::new(sample_rate); 128],
+			tuning_preset: Tuning::EquaTemp,
+			temperament: TuningData::new(Tuning::EquaTemp),
 			poly: 0,
 			low_note: 0,
 			high_note: 127,
@@ -219,7 +230,7 @@ impl Oscillator {
 			active: false,
 			cur_note: 0,
 			clk: 0,
-			wf: Waveform::new(waveform),
+			wf: WaveTable::new(waveform),
 		};
 		osc.retemper();
 		osc.active = true;
@@ -227,9 +238,9 @@ impl Oscillator {
 	}
 	fn retemper(&mut self) {
 		println!("Oscillator::retemper");
-		let temp = &TUNINGS[&self.temper];
+		self.temperament = super::temperament::TUNINGS[self.tuning_preset];
 		for n in 0..128 {
-			self.notes[n].phase.set_freq(temp.lookup(n as i8));
+			self.notes[n].phase.set_freq(self.temperament.lookup(n as i8));
 		}
 	}
 	fn note_off(&mut self, n: i8) {
@@ -298,44 +309,55 @@ impl Oscillator {
 
 		self.active = true;
 	}
-}
+	fn do_adsr(&mut self, n: usize) {
+		let note = &mut self.notes[n];
+		note.amp = note.amp_env.run();
+		note.flt = note.flt_env.run();
 
-/*
-impl Oscillator {
-	fn generate(out: [Vec<f64>; 2]) {
-		let mut o: Sample = 0.;
-		let mut sL: Sample = 0.;
-		let mut sR: Sample = 0.;
-
-		for i in 0..frames_per_buf {
-			sL = 0.0;
-
-			for n in low_note..high_note {
-				let note = &notes[n];
-				if note.num != 0 {
-					do_adsr(n);
-				}
-				if note.num != 0 {
-					sL += wf.lookup(note) * note.amp * note.vel;
-				}
-			}
-			clk += 1;
-			
-			//o = applyEffects(sL);
-			
-			sL = o * pan.amp_l;
-			sR = o * pan.amp_r;
-			
-			out[0][i] = sL;
-			out[1][i] = sR;
+		if note.amp_env.is_off() {
+			note.flt_env.gate_close();
+			note.num = 0;
+			note.phase.set_phase(0);
 		}
-		//paContinue
 	}
 }
-*/
 
-#[macro_use]
-extern crate lazy_static;
+pub trait Generator {
+	fn generate(&mut self) -> [f32; 2];
+}
+
+impl Generator for Oscillator {
+	fn generate(&mut self) -> [f32; 2] {
+		//let mut o: Sample = 0.;
+		let mut sL: Sample = 0.;
+		let sR: Sample;
+
+		for n in self.low_note..self.high_note {
+			{
+				let note_down = self.notes[n].num != 0;
+				if note_down {
+					self.do_adsr(n);
+				}
+			}
+			{
+				let note_down = self.notes[n].num != 0;
+				if note_down {
+					let note = &mut self.notes[n];
+					sL += self.wf.lookup(&mut note.phase) * note.amp * note.vel;
+				}
+			}
+		}
+		self.clk += 1;
+		
+		//o = applyEffects(sL);
+		//o = sL;
+		//sL = o;// * self.pan.amp_l;
+		sR = sL * 1.;// * self.pan.amp_r;
+		
+		[sL as f32, sR as f32]
+	}
+}
+
 use std::collections::HashMap;
 lazy_static! {
 	static ref WAVEFORMS: HashMap<Waveforms, WaveTable> = {
@@ -350,15 +372,16 @@ lazy_static! {
 
 #[test]
 fn test_oscillator() {
-	Oscillator::new(Waveforms::Saw);
+	Oscillator::new(96000, Waveforms::Saw);
 }
 
 #[test]
 fn test_counter() {
+	let rate = 96000;
 	assert_eq!(1 << 19, 524288);
-	let mut c = Counter::new();
+	let mut c = Counter::new(rate);
 	let size = TABLE_SIZE as u32;
-	c.set_freq(SAMPLE_RATE as Frequency / 4.);
+	c.set_freq(rate as Frequency / 4.);
 	assert_eq!(c.int(), 0);
 	c.increment(); assert_eq!(c.int(), size/4);
 	c.increment(); assert_eq!(c.int(), size/2);

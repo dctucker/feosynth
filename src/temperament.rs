@@ -1,5 +1,7 @@
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-enum Tuning {
+use super::types::{Cents, Frequency};
+
+#[derive(Clone, Copy, Debug)]
+pub enum Tuning {
 	EquaTemp,
 	MeanTemp,
 	Just5Temp,
@@ -11,41 +13,23 @@ enum Tuning {
 	Dowland,
 	Kirnberger,
 }
-type TuningType = Tuning;
 
 trait OctaveTuning {
 	fn init_octave() -> [Frequency; 12];
 }
 
-type Frequency = f64;
-type Cents = f64;
-
-fn cents(f1: Frequency, f2: Frequency) -> Cents {
+pub fn cents(f1: Frequency, f2: Frequency) -> Cents {
 	1200. * (f2 / f1).log2()
 }
 
-struct TuningData {
+#[derive(Clone, Copy)]
+pub struct TuningData {
 	pub note : i8,
 	pub freq_table : [Frequency; 128],
 	pub fund_table : [Frequency; 128],
 	pub intervals  : [Frequency; 12],
 	pub freq_a : Frequency, lo_tt : Frequency, hi_tt : Frequency,
-	pub tuning : TuningType,
-}
-
-impl Tuning {
-	pub fn new(t : TuningType) -> TuningData {
-		let mut td = TuningData {
-			note: 0,
-			tuning: t,
-			freq_table: [0.; 128],
-			fund_table: [0.; 128],
-			intervals:  [0.; 12],
-			freq_a: 440.0, lo_tt: 0., hi_tt: 0.
-		};
-		td.init_octave();
-		td
-	}
+	pub tuning : Tuning,
 }
 
 fn pow2i(x: u32) -> Frequency {
@@ -65,6 +49,18 @@ fn pow5(x: Frequency) -> Frequency {
 }
 
 impl TuningData {
+	pub fn new(t : Tuning) -> TuningData {
+		let mut td = TuningData {
+			note: 0,
+			tuning: t,
+			freq_table: [0.; 128],
+			fund_table: [0.; 128],
+			intervals:  [0.; 12],
+			freq_a: 440.0, lo_tt: 0., hi_tt: 0.
+		};
+		td.init_octave();
+		td
+	}
 	fn init_octave(&mut self) {
 		let mut e_f = [0.; 12];
         //println!("{:?}", &self.tuning);
@@ -327,10 +323,60 @@ impl TuningData {
 	}
 }
 
+use std::ops::Index;
+
+pub struct Tunings<T> {
+	EquaTemp : T,
+	MeanTemp : T,
+	Just5Temp : T,
+	KeplTemp : T,
+	PythTemp : T,
+	HammTemp : T,
+	PtolTemp : T,
+	ChinTemp : T,
+	Dowland : T,
+	Kirnberger : T,
+}
+impl Tunings<TuningData> {
+	pub fn new() -> Tunings<TuningData> {
+		Tunings {
+			EquaTemp:   TuningData::new(Tuning::EquaTemp),
+			MeanTemp:   TuningData::new(Tuning::MeanTemp),
+			Just5Temp:  TuningData::new(Tuning::Just5Temp),
+			KeplTemp:   TuningData::new(Tuning::KeplTemp),
+			PythTemp:   TuningData::new(Tuning::PythTemp),
+			HammTemp:   TuningData::new(Tuning::HammTemp),
+			PtolTemp:   TuningData::new(Tuning::PtolTemp),
+			ChinTemp:   TuningData::new(Tuning::ChinTemp),
+			Dowland:    TuningData::new(Tuning::Dowland),
+			Kirnberger: TuningData::new(Tuning::Kirnberger),
+		}
+	}
+}
+impl Index<Tuning> for Tunings<TuningData> {
+	type Output = TuningData;
+	fn index(&self, preset : Tuning) -> &Self::Output {
+		match preset {
+			Tuning::EquaTemp   => &self.EquaTemp,
+			Tuning::MeanTemp   => &self.MeanTemp,
+			Tuning::Just5Temp  => &self.Just5Temp,
+			Tuning::KeplTemp   => &self.KeplTemp,
+			Tuning::PythTemp   => &self.PythTemp,
+			Tuning::HammTemp   => &self.HammTemp,
+			Tuning::PtolTemp   => &self.PtolTemp,
+			Tuning::ChinTemp   => &self.ChinTemp,
+			Tuning::Dowland    => &self.Dowland,
+			Tuning::Kirnberger => &self.Kirnberger,
+		}
+	}
+}
+
 type Temperament = Tuning;
 
 lazy_static! {
-	static ref TUNINGS: HashMap<TuningType, TuningData> = {
+	pub static ref TUNINGS: Tunings<TuningData> = Tunings::new();
+	/*
+	static ref TUNINGS: HashMap<Tuning, TuningData> = {
 		use Tuning::*;
 		let mut hash: HashMap<Tuning, TuningData> = HashMap::new();
 		for temp in &[EquaTemp, MeanTemp, Just5Temp, KeplTemp, PythTemp, HammTemp, PtolTemp, ChinTemp, Dowland, Kirnberger] {
@@ -338,11 +384,12 @@ lazy_static! {
 		}
 		hash
 	};
+	*/
 }
 
 #[test]
 fn test_temperaments() {
-	let ptol = &TUNINGS[&Tuning::PtolTemp];
+	let ptol = &TUNINGS[Tuning::PtolTemp];
 	assert_eq!( ptol.lookup(60), 264. );
 	assert_eq!( ptol.lookup(64), 330. );
 }

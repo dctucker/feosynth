@@ -1,8 +1,11 @@
-const SAMPLE_RATE: u64 = 96000;
+use super::types::{SampleRate, Sample, Frequency, Seconds};
+use super::audio::SampleRated;
+
+//const SAMPLE_RATE: u64 = 96000;
 const ADSR_DIVISOR: u64 = 1;
 const ADSR_MASK: u64 = 0x0;
 
-trait Gate {
+pub trait Gate {
 	fn gate_open(&mut self);
 	fn gate_close(&mut self);
 }
@@ -15,13 +18,12 @@ enum Stage {
 	Sustain,
 	Release
 }
-type StageType = Stage;
-type Seconds = f64;
 
 #[derive(Copy, Clone)]
-struct ADSR {
-	stage : StageType,
+pub struct ADSR {
+	stage : Stage,
 	val: Sample,
+	sample_rate: Frequency,
 	clk: u64,
 	a: Seconds, d: Seconds, s: Sample, r: Seconds,
 	da: Frequency, dd: Frequency, dr: Frequency,
@@ -29,24 +31,30 @@ struct ADSR {
 
 use Stage::*;
 
-impl ADSR {
+impl SampleRated for ADSR {
+	fn set_sample_rate(&mut self, sample_rate: SampleRate) {
+		self.sample_rate = sample_rate as Frequency / ADSR_DIVISOR as Frequency;
+	}
+}
 
-	pub fn new() -> ADSR {
+impl ADSR {
+	pub fn new(sample_rate: SampleRate) -> ADSR {
 		let mut adsr = ADSR {
 			stage: Off,
 			val: 0.,
+			sample_rate: 0.,
 			clk: 0,
 			a: 0.1, d: 1.0, s: 0.75, r: 0.25,
 			da: 0., dd: 0., dr: 0.,
 		};
+		adsr.set_sample_rate(sample_rate);
 		adsr.calc();
 		adsr
 	}
 	pub fn calc(&mut self) {
-		const k: Frequency = SAMPLE_RATE as Frequency / ADSR_DIVISOR as Frequency;
-		self.da = 1. / (self.a * k);
-		self.dd = 1. / (self.d * k);
-		self.dr = 1. / (self.r * k);
+		self.da = 1. / (self.a * self.sample_rate);
+		self.dd = 1. / (self.d * self.sample_rate);
+		self.dr = 1. / (self.r * self.sample_rate);
 	}
 	pub fn set(&mut self, a: Seconds, d: Seconds, s: Sample, r: Seconds) {
 		if a >= 0.0 { self.a = 15.0 * a.powf(6.0) + 0.01; }
@@ -54,6 +62,12 @@ impl ADSR {
 		if s >= 0.0 { self.s = s; }
 		if r >= 0.0 { self.r = 15.0 * r.powf(6.0) + 0.01; }
 		self.calc();
+	}
+	pub fn value(&self) -> Sample {
+		self.val
+	}
+	pub fn is_off(&self) -> bool {
+		self.stage == Off
 	}
 	pub fn run(&mut self) -> Sample {
 		match self.stage {
@@ -102,7 +116,7 @@ impl Gate for ADSR {
 
 #[test]
 fn test_adsr() {
-	let mut adsr = ADSR::new();
+	let mut adsr = ADSR::new(96000);
 	assert_eq!(adsr.val, 0.);
 	adsr.gate_open();
 	adsr.run();
