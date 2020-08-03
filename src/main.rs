@@ -1,15 +1,7 @@
-#[macro_use]
-extern crate lazy_static;
-
-mod types;
-mod audio;
-mod adsr;
-mod oscillator;
-mod temperament;
-//include!("temperament.rs");
+include!("lib.rs");
 
 fn temperaments() {
-	use temperament::{TUNINGS, cents};
+	use crate::temperament::{TUNINGS, cents};
 	let equal = &TUNINGS[temperament::Tuning::EquaTemp];
 	let other = &TUNINGS[temperament::Tuning::PtolTemp];
 	for n in 57..70 {
@@ -24,8 +16,8 @@ fn temperaments() {
 	}
 }
 
-fn adsr(sr: types::SampleRate) {
-	use adsr::*;
+fn adsr(sr: crate::types::SampleRate) {
+	use crate::adsr::*;
 	let mut adsr = ADSR::new(sr);
 	adsr.gate_open();
 	let mut v = adsr.value();
@@ -40,18 +32,30 @@ fn adsr(sr: types::SampleRate) {
 	}
 }
 
-fn oscillator(sr: types::SampleRate) {
-	use oscillator::{Oscillator, Waveforms};
+fn oscillator(sr: crate::types::SampleRate) {
+	use crate::oscillator::{Oscillator, Waveforms};
 	let mut _osc = Oscillator::new(sr, Waveforms::Sine);
 }
 
 fn main() {
-	let sys = audio::System::new();
+	let mut sys = crate::audio::System::new();
+	let mut midi = crate::midi::InputThread::new();
 	let sample_rate = sys.config.sample_rate.0;
 	temperaments();
 	adsr(sample_rate);
 	oscillator(sample_rate);
 	println!("Sample format: {:?}", sys.sample_format());
 	println!("Config = {:?}", sys.config);
-	sys.run_config();
+
+	midi.run();
+	sys.run();
+
+	'outer: loop {
+		match midi.rx.recv() {
+			Some(msg) => {
+				println!("Received {:?}", msg);
+			},
+			_ => {},
+		}
+	};
 }

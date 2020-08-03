@@ -8,6 +8,7 @@ pub struct System {
 	device: cpal::Device,
 	sample_format: cpal::SampleFormat,
 	pub config: cpal::StreamConfig,
+	stream: Option<cpal::Stream>,
 }
 impl System {
 	pub fn new() -> System {
@@ -20,46 +21,45 @@ impl System {
 			device: device,
 			sample_format: config.sample_format(),
 			config: config.into(),
+			stream: None,
 		}
 	}
 	pub fn sample_format(&self) -> cpal::SampleFormat {
 		self.sample_format
 	}
-	pub fn run_config(&self) -> Result<(), anyhow::Error> {
-		match self.sample_format {
-			cpal::SampleFormat::F32 => Self::run::<f32>(&self.device, &self.config)?,
-			cpal::SampleFormat::I16 => Self::run::<i16>(&self.device, &self.config)?,
-			cpal::SampleFormat::U16 => Self::run::<u16>(&self.device, &self.config)?,
-		}
+	pub fn run(&mut self) -> Result<(), anyhow::Error> {
+		let output_stream = match self.sample_format {
+			cpal::SampleFormat::F32 => self.run_config::<f32>(),
+			cpal::SampleFormat::I16 => self.run_config::<i16>(),
+			cpal::SampleFormat::U16 => self.run_config::<u16>(),
+		}.unwrap();
+		output_stream.play().unwrap();
+		self.stream = Some(output_stream);
 
 		Ok(())
 	}
-	fn run<T>(device: &cpal::Device, config: &cpal::StreamConfig) -> Result<(), anyhow::Error>
+	fn run_config<T>(&mut self) -> Result<cpal::Stream, anyhow::Error>
 	where
 		T: cpal::Sample,
 	{
-		let sample_rate = config.sample_rate.0 as f32;
-		let channels = config.channels as usize;
-
 		// Produce a sinusoid of maximum amplitude.
 		let mut sample_clock = 0f32;
+		let channels = self.config.channels as usize;
+		let sample_rate = self.config.sample_rate.0 as f32;
 		let mut next_value = move || {
 			sample_clock = (sample_clock + 1.0) % sample_rate;
-			(sample_clock * 440.0 * 2.0 * 3.141592 / sample_rate).sin()
+			(0.2 - 0.00001 * sample_clock).max(0.0) * (sample_clock * 440.0 * 2.0 * 3.141592 / sample_rate).sin()
 		};
-
-		let stream = device.build_output_stream(
-			config,
+		let stream = self.device.build_output_stream(
+			&self.config,
 			move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
 				Self::write_data(data, channels, &mut next_value)
 			},
 			|err| eprintln!("an error occurred on stream: {}", err),
 		)?;
-		stream.play()?;
 
-		std::thread::sleep(std::time::Duration::from_millis(1000));
-
-		Ok(())
+		//std::thread::sleep(std::time::Duration::from_millis(1000));
+		Ok(stream)
 	}
 	fn write_data<T>(output: &mut [T], channels: usize, next_sample: &mut dyn FnMut() -> f32)
 	where
