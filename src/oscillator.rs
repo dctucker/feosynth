@@ -32,15 +32,13 @@ impl SampleRated for Counter {
 	}
 }
 impl Counter {
-	pub fn new(sample_rate: SampleRate) -> Counter {
-		let mut c = Counter {
+	pub fn new() -> Counter {
+		Counter {
 			phase: Wrapping(0_u32),
 			incr: Wrapping(1_u32),
 			bits: Wrapping(SHIFT),
 			dsr: 0.,
-		};
-		c.set_sample_rate(sample_rate);
-		c
+		}
 	}
 	fn calc_freq(&self, f: f64) -> f64 {
 		f * self.dsr
@@ -174,17 +172,24 @@ struct Note {
 	num: i8,
 }
 impl Note {
-	pub fn new(sample_rate: SampleRate) -> Note {
+	pub fn new() -> Note {
 		Note {
-			phase: Counter::new(sample_rate),
+			phase: Counter::new(),
 			amp: 0.,
-			amp_env: ADSR::new(sample_rate),
+			amp_env: ADSR::new(),
 			flt: 0.,
-			flt_env: ADSR::new(sample_rate),
+			flt_env: ADSR::new(),
 			down: false,
 			vel: 0.,
 			num: 0,
 		}
+	}
+}
+impl SampleRated for Note {
+	fn set_sample_rate(&mut self, sample_rate: SampleRate) {
+		self.phase.set_sample_rate(sample_rate);
+		self.amp_env.set_sample_rate(sample_rate);
+		self.flt_env.set_sample_rate(sample_rate);
 	}
 }
 
@@ -217,10 +222,18 @@ pub struct Oscillator {
 	notes: Vec<Note>,
 }
 
+impl SampleRated for Oscillator {
+	fn set_sample_rate(&mut self, sample_rate: SampleRate) {
+		for note in self.notes.iter_mut() {
+			note.set_sample_rate(sample_rate);
+		}
+	}
+}
+
 impl Oscillator {
-	pub fn new(sample_rate: SampleRate, waveform: Waveforms) -> Oscillator {
+	pub fn new(waveform: Waveforms) -> Oscillator {
 		let mut osc = Oscillator {
-			notes: vec![Note::new(sample_rate); 128],
+			notes: vec![Note::new(); 128],
 			tuning_preset: Tuning::EquaTemp,
 			temperament: TuningData::new(Tuning::EquaTemp),
 			poly: 0,

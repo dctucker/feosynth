@@ -38,7 +38,7 @@ impl SampleRated for ADSR {
 }
 
 impl ADSR {
-	pub fn new(sample_rate: SampleRate) -> ADSR {
+	pub fn new() -> ADSR {
 		let mut adsr = ADSR {
 			stage: Off,
 			val: 0.,
@@ -47,7 +47,6 @@ impl ADSR {
 			a: 0.1, d: 1.0, s: 0.75, r: 0.25,
 			da: 0., dd: 0., dr: 0.,
 		};
-		adsr.set_sample_rate(sample_rate);
 		adsr.calc();
 		adsr
 	}
