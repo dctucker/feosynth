@@ -73,18 +73,18 @@ impl TuningData {
 				self.init(e_f);
 			},
 			Tuning::MeanTemp => {
-				let P = pow5(1./4.);
-				let T = pow5( 1./2. ) / 2.;
-				let S = 8. / pow5(5./4.);
-				let Z = T / S;
+				let p = pow5(1./4.);
+				let t = pow5( 1./2. ) / 2.;
+				let s = 8. / pow5(5./4.);
+				let z = t / s;
 				e_f = [
-					1.    ,   Z   ,
-					T     ,   T*S ,
-					T*T   ,
-					T*T*S , T*T*T ,
-					P     ,   P*Z ,
-					P*T   , P*T*S ,
-					P*T*T
+					1.    ,   z   ,
+					t     ,   t*s ,
+					t*t   ,
+					t*t*s , t*t*t ,
+					p     ,   p*z ,
+					p*t   , p*t*s ,
+					p*t*t
 				];
 				self.init(e_f);
 			},
@@ -99,32 +99,32 @@ impl TuningData {
 					5./3., 16./9. ,
 					15./8.
 				];
-				let Gb = 64./45.;
-				let Fs = 45./32.;
-				self.init_just( e_f, Gb, Fs )
+				let g_flat = 64./45.;
+				let f_sharp = 45./32.;
+				self.init_just( e_f, g_flat, f_sharp )
 			},
 			Tuning::KeplTemp => {
-				let U = 1. ;
-				let cs  = 135. / 128. ; // lemma = 15:16 / 8:9
-				let jM  =   9. /   8. ; // major whole tone
-				let m3  =   6. /   5. ; // minor third
-				let M3  =   5. /   4. ; // major third
-				let P4  =   4. /   3. ; // perfect fourth
-				let dT  =  45. /  32. ; // augmented fourth
-				let P5  =   3. /   2. ; // perfect fifth
-				let jm6 =   8. /   5. ; // minor sixth
-				let pM6 =  27. /  16. ; // pythagorean major sixth
-				let jm7 =   9. /   5. ; // 16:9 or 9:5	
-				let jM7 =  15. /   8. ; // 
+				let u = 1. ;
+				let min2 = 135. / 128. ; // lemma = 15:16 / 8:9
+				let maj2 =   9. /   8. ; // major whole tone
+				let min3 =   6. /   5. ; // minor third
+				let maj3 =   5. /   4. ; // major third
+				let p4   =   4. /   3. ; // perfect fourth
+				let tt   =  45. /  32. ; // augmented fourth
+				let p5   =   3. /   2. ; // perfect fifth
+				let min6 =   8. /   5. ; // minor sixth
+				let maj6 =  27. /  16. ; // pythagorean major sixth
+				let min7 =   9. /   5. ; // 16:9 or 9:5	
+				let maj7 =  15. /   8. ; // 
 
 				e_f = [
-					U   , cs,
-					jM  , m3,
-					M3  ,
-					P4  , dT,
-					P5  , jm6,
-					pM6 , jm7,
-					jM7
+					u   , min2,
+					maj2, min3,
+					maj3,
+					p4  , tt,
+					p5  , min6,
+					maj6, min7,
+					maj7
 				];
 				self.init(e_f);
 			},
@@ -143,9 +143,9 @@ impl TuningData {
 					 27./16. ,  16./9.  ,
 					243./128.
 				];
-				let Ab = 1024./729.;
-				let Gs = 729./512.;
-				self.init_just(e_f, Ab, Gs)
+				let a_flat = 1024./729.;
+				let g_sharp = 729./512.;
+				self.init_just(e_f, a_flat, g_sharp)
 			},
 			Tuning::HammTemp => {
 				e_f = [
@@ -267,7 +267,6 @@ impl TuningData {
 
 	pub fn modulate(&mut self, m : i8) {
 		let m_n = 69 + m as usize;
-		let m = m as usize;
 		
 		// fails on Just5 .. missing tritone [on upper octave]?
 		
@@ -275,21 +274,23 @@ impl TuningData {
 		println!("New center: {}", new_center);
 		for i in 0..12 {
 			let mut n: usize = i + m_n as usize;
-			self.freq_table[n] = self.intervals[i] * new_center;
+			self.freq_table[n as usize] = self.intervals[i] * new_center;
 			//println!("Interval {} = {}", i, self.freq_table[n]);
 
 			n -= 12;
 			let mut o = -1;
-			while n >= 0 {
+			loop {
 				self.freq_table[n] = self.intervals[i] * new_center * pow2(o as Frequency);
+				if n < 12 { break; }
 				n -= 12;
 				o -= 1;
 			}
 
-			n = i + m_n + 12;
+			n = 12 + i + m_n as usize;
 			o = 1;
-			while n < 128 {
+			loop {
 				self.freq_table[n] = self.intervals[i] * new_center * pow2(o as Frequency);
+				if n > 116 { break; }
 				n += 12;
 				o += 1;
 			}
@@ -318,38 +319,38 @@ impl TuningData {
 		self.init_fund();
 	}
 
-	pub fn init_temp(T : Tuning) -> Tuning {
-		T
+	pub fn init_temp(tuning : Tuning) -> Tuning {
+		tuning
 	}
 }
 
 use std::ops::Index;
 
 pub struct Tunings<T> {
-	EquaTemp : T,
-	MeanTemp : T,
-	Just5Temp : T,
-	KeplTemp : T,
-	PythTemp : T,
-	HammTemp : T,
-	PtolTemp : T,
-	ChinTemp : T,
-	Dowland : T,
-	Kirnberger : T,
+	equa_temp : T,
+	mean_temp : T,
+	just5_temp : T,
+	kepl_temp : T,
+	pyth_temp : T,
+	hamm_temp : T,
+	ptol_temp : T,
+	chin_temp : T,
+	dowland : T,
+	kirnberger : T,
 }
 impl Tunings<TuningData> {
 	pub fn new() -> Tunings<TuningData> {
 		Tunings {
-			EquaTemp:   TuningData::new(Tuning::EquaTemp),
-			MeanTemp:   TuningData::new(Tuning::MeanTemp),
-			Just5Temp:  TuningData::new(Tuning::Just5Temp),
-			KeplTemp:   TuningData::new(Tuning::KeplTemp),
-			PythTemp:   TuningData::new(Tuning::PythTemp),
-			HammTemp:   TuningData::new(Tuning::HammTemp),
-			PtolTemp:   TuningData::new(Tuning::PtolTemp),
-			ChinTemp:   TuningData::new(Tuning::ChinTemp),
-			Dowland:    TuningData::new(Tuning::Dowland),
-			Kirnberger: TuningData::new(Tuning::Kirnberger),
+			equa_temp:   TuningData::new(Tuning::EquaTemp),
+			mean_temp:   TuningData::new(Tuning::MeanTemp),
+			just5_temp:  TuningData::new(Tuning::Just5Temp),
+			kepl_temp:   TuningData::new(Tuning::KeplTemp),
+			pyth_temp:   TuningData::new(Tuning::PythTemp),
+			hamm_temp:   TuningData::new(Tuning::HammTemp),
+			ptol_temp:   TuningData::new(Tuning::PtolTemp),
+			chin_temp:   TuningData::new(Tuning::ChinTemp),
+			dowland:     TuningData::new(Tuning::Dowland),
+			kirnberger:  TuningData::new(Tuning::Kirnberger),
 		}
 	}
 }
@@ -357,16 +358,16 @@ impl Index<Tuning> for Tunings<TuningData> {
 	type Output = TuningData;
 	fn index(&self, preset : Tuning) -> &Self::Output {
 		match preset {
-			Tuning::EquaTemp   => &self.EquaTemp,
-			Tuning::MeanTemp   => &self.MeanTemp,
-			Tuning::Just5Temp  => &self.Just5Temp,
-			Tuning::KeplTemp   => &self.KeplTemp,
-			Tuning::PythTemp   => &self.PythTemp,
-			Tuning::HammTemp   => &self.HammTemp,
-			Tuning::PtolTemp   => &self.PtolTemp,
-			Tuning::ChinTemp   => &self.ChinTemp,
-			Tuning::Dowland    => &self.Dowland,
-			Tuning::Kirnberger => &self.Kirnberger,
+			Tuning::EquaTemp   => &self.equa_temp,
+			Tuning::MeanTemp   => &self.mean_temp,
+			Tuning::Just5Temp  => &self.just5_temp,
+			Tuning::KeplTemp   => &self.kepl_temp,
+			Tuning::PythTemp   => &self.pyth_temp,
+			Tuning::HammTemp   => &self.hamm_temp,
+			Tuning::PtolTemp   => &self.ptol_temp,
+			Tuning::ChinTemp   => &self.chin_temp,
+			Tuning::Dowland    => &self.dowland,
+			Tuning::Kirnberger => &self.kirnberger,
 		}
 	}
 }

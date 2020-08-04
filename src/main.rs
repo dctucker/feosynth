@@ -48,7 +48,7 @@ fn main() {
 	println!("Config = {:?}", sys.config);
 
 	midi.run();
-	sys.run();
+	sys.run().unwrap();
 
 	'outer: loop {
 		match midi.rx.recv() {

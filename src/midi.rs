@@ -111,7 +111,7 @@ impl InputThread {
 		let in_port_name = input.port_name(&in_port).unwrap();
 		let tx = self.tx.clone();
 		println!("Opening MIDI connection {}", in_port_name);
-		let _conn_in = input.connect(&in_port, "feosynth-read-input", move |stamp, message, _| {
+		let _conn_in = input.connect(&in_port, "feosynth-read-input", move |_stamp, message, _| {
 			let event_type = message[0] & 0xf0;
 			let ch = Channel::from_u8(message[0] & 0x0f).unwrap();
 			let event: Option<MidiEvent> = match event_type {

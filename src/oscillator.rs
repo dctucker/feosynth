@@ -10,7 +10,7 @@ use super::temperament::{Tuning,TuningData};
 const TABLE_BITS: usize = 19;
 const TABLE_SIZE: usize = 1 << TABLE_BITS;
 const SHIFT: u32 = 32 - TABLE_BITS as u32;
-const resolution: f64 = (1_i64 << 32) as f64;
+const RESOLUTION: f64 = (1_i64 << 32) as f64;
 
 type TablePos = u32;
 
@@ -28,7 +28,7 @@ impl Into<usize> for Counter {
 }
 impl SampleRated for Counter {
 	fn set_sample_rate(&mut self, sample_rate: SampleRate) {
-		self.dsr = resolution / sample_rate as f64;
+		self.dsr = RESOLUTION / sample_rate as f64;
 	}
 }
 impl Counter {
@@ -188,7 +188,7 @@ impl Note {
 	}
 }
 
-const max_poly: usize = 128;
+const MAX_POLY: usize = 128;
 pub struct Oscillator {
 	active: bool,
 
@@ -296,7 +296,7 @@ impl Oscillator {
 			note.vel = v as Sample / 127.;
 		}	
 
-		if self.poly < max_poly - 1 { self.poly += 1; }
+		if self.poly < MAX_POLY - 1 { self.poly += 1; }
 
 		if self.high_note < un {
 			self.high_note = un;
@@ -329,8 +329,8 @@ pub trait Generator {
 impl Generator for Oscillator {
 	fn generate(&mut self) -> [f32; 2] {
 		//let mut o: Sample = 0.;
-		let mut sL: Sample = 0.;
-		let sR: Sample;
+		let mut left: Sample = 0.;
+		let right: Sample;
 
 		for n in self.low_note..self.high_note {
 			{
@@ -343,18 +343,18 @@ impl Generator for Oscillator {
 				let note_down = self.notes[n].num != 0;
 				if note_down {
 					let note = &mut self.notes[n];
-					sL += self.wf.lookup(&mut note.phase) * note.amp * note.vel;
+					left += self.wf.lookup(&mut note.phase) * note.amp * note.vel;
 				}
 			}
 		}
 		self.clk += 1;
 		
-		//o = applyEffects(sL);
-		//o = sL;
-		//sL = o;// * self.pan.amp_l;
-		sR = sL * 1.;// * self.pan.amp_r;
+		//o = applyEffects(left);
+		//o = left;
+		//left = o;// * self.pan.amp_l;
+		right = left * 1.;// * self.pan.amp_r;
 		
-		[sL as f32, sR as f32]
+		[left as f32, right as f32]
 	}
 }
 
