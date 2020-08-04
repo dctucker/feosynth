@@ -2,7 +2,7 @@ extern crate midir;
 extern crate midi;
 
 use crossbeam::channel::{Sender, Receiver};
-
+use midistream::*;
 use midir::{MidiInput,
 //MidiOutput,
 //MidiInputPort,
@@ -10,88 +10,10 @@ MidiInputConnection,
 //MidiOutputConnection,
 Ignore};
 
-/*
-struct NoteOff {
-	channel: u8,
-	note: u8,
-}
-struct NoteOn {
-	channel: u8,
-	note: u8,
-	vel: u8,
-}
-struct Control {
-	channel: u8,
-	num: u8,
-	val: u8,
-}
-struct AfterTouch {
-	channel: u8,
-	note: u8,
-	val: u8,
-}
-struct Patch {
-	channel: u8,
-	num: u8,
-}
-struct Pressure {
-	channel: u8,
-	val: u8,
-}
-struct Bend {
-	channel: u8,
-	val: u16,
-}
-struct SysEx {
-	message: Vec<u8>,
-}
-
-pub enum MidiEvent {
-	NoteOff,
-	NoteOn,
-	AfterTouch,
-	Control,
-	Patch,
-	Pressure,
-	Bend,
-	SysEx,
-}
-*/
-use ::midi::Message as MidiEvent;
-use ::midi::Channel;
-use ::midi::Manufacturer;
-
-trait Fromu8 {
-	fn from_u8(n: u8) -> Option<Channel>;
-}
-impl Fromu8 for Channel {
-    fn from_u8(n: u8) -> Option<Self> {
-        match n {
-            0 => Some(Channel::Ch1),
-            1 => Some(Channel::Ch2),
-            2 => Some(Channel::Ch3),
-            3 => Some(Channel::Ch4),
-            4 => Some(Channel::Ch5),
-            5 => Some(Channel::Ch6),
-            6 => Some(Channel::Ch7),
-            7 => Some(Channel::Ch8),
-            8 => Some(Channel::Ch9),
-            9 => Some(Channel::Ch10),
-            10 => Some(Channel::Ch11),
-            11 => Some(Channel::Ch12),
-            12 => Some(Channel::Ch13),
-            13 => Some(Channel::Ch14),
-            14 => Some(Channel::Ch15),
-            15 => Some(Channel::Ch16),
-            _ => None
-        }
-    }
-}
-
 pub struct InputThread {
 	connection: Option<MidiInputConnection<()>>,
-	tx: Sender<MidiEvent>,
-	pub rx: Receiver<MidiEvent>,
+	tx: Sender<Msg>,
+	pub rx: Receiver<Msg>,
 }
 impl InputThread {
 	pub fn new() -> InputThread {
@@ -112,32 +34,13 @@ impl InputThread {
 		let tx = self.tx.clone();
 		println!("Opening MIDI connection {}", in_port_name);
 		let _conn_in = input.connect(&in_port, "feosynth-read-input", move |_stamp, message, _| {
-			let event_type = message[0] & 0xf0;
-			let ch = Channel::from_u8(message[0] & 0x0f).unwrap();
-			let event: Option<MidiEvent> = match event_type {
-				0x80 => MidiEvent::NoteOff(ch, message[1], message[2]).into(),
-				0x90 => {
-					let ret: MidiEvent = match message[2] {
-						0 => MidiEvent::NoteOff(ch, message[1], message[2]).into(),
-						_ => MidiEvent::NoteOn(ch, message[1], message[2]).into(),
-					};
-					ret.into()
-				},
-				0xa0 => MidiEvent::PolyphonicPressure(ch, message[1], message[2]).into(),
-				0xb0 => MidiEvent::ControlChange(ch, message[1], message[2]).into(),
-				0xc0 => MidiEvent::ProgramChange(ch, message[1]).into(),
-				0xd0 => MidiEvent::ChannelPressure(ch, message[1]).into(),
-				0xe0 => MidiEvent::PitchBend(ch, message[1] as u16 * 0x80 + message[2] as u16).into(),
-				0xf0 => {
-					let vec = message.to_vec();
-					MidiEvent::SysEx(Manufacturer::OneByte(message[0]), vec).into()
-				},
-				_ => None,
-			};
-			match event {
-				Some(x) => { tx.send(x); },
-				None => {},
-			};
+			let messages = MsgDecoder::new(message.iter().map(|x| *x));
+			for msg in messages {
+				match msg {
+					Ok(x) => { tx.send(x); },
+					_ => {},
+				};
+			}
 		}, ()).unwrap();
 
 		self.connection = Some(_conn_in);

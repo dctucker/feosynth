@@ -38,6 +38,7 @@ fn oscillator(sr: crate::types::SampleRate) {
 }
 
 fn main() {
+	use midistream::*;
 	let mut sys = crate::audio::System::new();
 	let mut midi = crate::midi::InputThread::new();
 	let sample_rate = sys.config.sample_rate.0;
@@ -51,11 +52,26 @@ fn main() {
 	sys.run().unwrap();
 
 	'outer: loop {
-		match midi.rx.recv() {
-			Some(msg) => {
-				println!("Received {:?}", msg);
-			},
-			_ => {},
+		if let Some(msg) = midi.rx.recv() {
+			match msg {
+				Msg::Simple(x) => {
+					match x {
+						SimpleMsg::NoteOn(y) => {
+							println!("Note on {:?}", y);
+						},
+						y => {
+							println!("{:?}", y);
+						},
+					}
+					println!("Received {:?}", x);
+				},
+				Msg::Complex(x) => {
+					println!("Received {:?}", x);
+				},
+				Msg::Sysex(x) => {
+					println!("Received {:?}", x);
+				},
+			}
 		}
 	};
 }
