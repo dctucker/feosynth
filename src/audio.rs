@@ -3,6 +3,7 @@ extern crate cpal;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use super::types::{SampleRate};
 use crate::oscillator::Generator;
+use crossbeam::channel::{Receiver, Sender};
 
 pub trait SampleRated {
 	fn set_sample_rate(&mut self, sample_rate: SampleRate);
@@ -15,6 +16,8 @@ pub struct System<G> {
 	pub config: cpal::StreamConfig,
 	stream: Option<cpal::Stream>,
 	generator: Box<G>,
+	rx: Receiver<midistream::Msg>,
+	pub tx: Sender<midistream::Msg>,
 }
 impl<G> System<G>
 where G: Generator + SampleRated + Send + Sync + 'static
@@ -23,6 +26,7 @@ where G: Generator + SampleRated + Send + Sync + 'static
 		let host = cpal::default_host();
 		let device = host.default_output_device().expect("no output device available");
 		let config = device.default_output_config().expect("no default config available");
+		let (tx, rx) = crossbeam::channel::bounded(256);
 
 		let mut sys = System {
 			host: host,
@@ -31,6 +35,8 @@ where G: Generator + SampleRated + Send + Sync + 'static
 			config: config.into(),
 			stream: None,
 			generator: generator,
+			rx: rx,
+			tx: tx,
 		};
 		let sample_rate = sys.config.sample_rate.0;
 		sys.generator.set_sample_rate(sample_rate);

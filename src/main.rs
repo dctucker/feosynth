@@ -1,4 +1,6 @@
 include!("lib.rs");
+use crossbeam::channel::{Sender};
+use midistream::Msg;
 
 /*
 fn temperaments() {
@@ -34,12 +36,13 @@ fn adsr() {
 }
 */
 
-fn dispatch_midi_in(msg: midistream::Msg) {
+fn dispatch_midi_in(msg: midistream::Msg, tx: &mut Sender<Msg>) {
 	use midistream::*;
 	match msg {
 		Msg::Simple(x) => match x {
 			SimpleMsg::NoteOn(y) => {
 				println!("Note on {:?}", y);
+				tx.send(msg);
 			},
 			y => {
 				println!("{:?}", y);
@@ -56,8 +59,8 @@ fn dispatch_midi_in(msg: midistream::Msg) {
 
 fn main() {
 	let osc = crate::oscillator::Oscillator::new(crate::oscillator::Waveforms::Saw);
-	let mut sys = crate::audio::System::new(Box::new(osc));
 	let mut midi = crate::midi::InputThread::new();
+	let mut sys = crate::audio::System::new(Box::new(osc));
 	println!("Sample format: {:?}", sys.sample_format());
 	println!("Config = {:?}", sys.config);
 
@@ -65,8 +68,9 @@ fn main() {
 	sys.run().unwrap();
 
 	'outer: loop {
+		let mut tx1 = sys.tx.clone();
 		if let Some(msg) = midi.rx.recv() {
-			dispatch_midi_in(msg);
+			dispatch_midi_in(msg, &mut tx1);
 		}
 	};
 }
