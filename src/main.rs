@@ -1,6 +1,7 @@
+extern crate signal_hook;
 include!("lib.rs");
-use crossbeam::channel::{Sender};
-use midistream::Msg;
+//use crossbeam::channel::{Sender};
+//use midistream::Msg;
 
 /*
 fn temperaments() {
@@ -36,41 +37,26 @@ fn adsr() {
 }
 */
 
-fn dispatch_midi_in(msg: midistream::Msg, tx: &mut Sender<Msg>) {
-	use midistream::*;
-	match msg {
-		Msg::Simple(x) => match x {
-			SimpleMsg::NoteOn(y) => {
-				println!("Note on {:?}", y);
-				tx.send(msg);
-			},
-			y => {
-				println!("{:?}", y);
-			},
-		},
-		Msg::Complex(x) => {
-			println!("Received {:?}", x);
-		},
-		Msg::Sysex(x) => {
-			println!("Received {:?}", x);
-		},
-	}
-}
-
 fn main() {
-	let osc = crate::oscillator::Oscillator::new(crate::oscillator::Waveforms::Saw);
+	let interrupt = std::sync::Arc::new( std::sync::atomic::AtomicBool::new( false ) );
+	signal_hook::flag::register(signal_hook::SIGINT, std::sync::Arc::clone(&interrupt)).unwrap();
+
+	let osc = Box::new(crate::oscillator::Oscillator::new(crate::oscillator::Waveforms::Saw));
 	let mut midi = crate::midi::InputThread::new();
-	let mut sys = crate::audio::System::new(Box::new(osc));
+	let sys = crate::audio::System::new();
 	println!("Sample format: {:?}", sys.sample_format());
 	println!("Config = {:?}", sys.config);
 
-	midi.run();
-	sys.run().unwrap();
+	midi.run(sys.tx.clone());
+	let _stream = sys.run(osc).unwrap();
+	//println!("{:?}", stream);
 
 	'outer: loop {
-		let mut tx1 = sys.tx.clone();
-		if let Some(msg) = midi.rx.recv() {
-			dispatch_midi_in(msg, &mut tx1);
+		//std::thread::yield_now();
+		std::thread::sleep(std::time::Duration::from_millis(500));
+		if interrupt.swap(false, std::sync::atomic::Ordering::Relaxed) {
+			println!("Caught interrupt, exiting outer loop");
+			break;
 		}
 	};
 }

@@ -9,87 +9,103 @@ pub trait SampleRated {
 	fn set_sample_rate(&mut self, sample_rate: SampleRate);
 }
 
-pub struct System<G> {
-	host: cpal::Host,
+pub struct System {
 	device: cpal::Device,
 	sample_format: cpal::SampleFormat,
 	pub config: cpal::StreamConfig,
 	stream: Option<cpal::Stream>,
-	generator: Box<G>,
 	rx: Receiver<midistream::Msg>,
 	pub tx: Sender<midistream::Msg>,
 }
-impl<G> System<G>
-where G: Generator + SampleRated + Send + Sync + 'static
+impl System
 {
-	pub fn new(generator: Box<G>) -> System<G> {
+	pub fn new() -> System {
 		let host = cpal::default_host();
 		let device = host.default_output_device().expect("no output device available");
 		let config = device.default_output_config().expect("no default config available");
 		let (tx, rx) = crossbeam::channel::bounded(256);
 
-		let mut sys = System {
-			host: host,
+		System {
 			device: device,
 			sample_format: config.sample_format(),
 			config: config.into(),
 			stream: None,
-			generator: generator,
 			rx: rx,
 			tx: tx,
-		};
-		let sample_rate = sys.config.sample_rate.0;
-		sys.generator.set_sample_rate(sample_rate);
-		sys
+		}
 	}
 	pub fn sample_format(&self) -> cpal::SampleFormat {
 		self.sample_format
 	}
-	pub fn run(&mut self) -> Result<(), anyhow::Error> {
-		let output_stream = match self.sample_format {
-			cpal::SampleFormat::F32 => self.run_config::<f32>(),
-			cpal::SampleFormat::I16 => self.run_config::<i16>(),
-			cpal::SampleFormat::U16 => self.run_config::<u16>(),
-		}.unwrap();
-		output_stream.play().unwrap();
-		self.stream = Some(output_stream);
-
-		Ok(())
-	}
-	fn run_config<S>(&mut self) -> Result<cpal::Stream, anyhow::Error>
+	fn run_config<G,S>(config: cpal::StreamConfig, device: cpal::Device, mut generator: Box<G>, rx: Receiver<midistream::Msg>) -> Result<cpal::Stream, anyhow::Error>
 	where
+		G: Generator + SampleRated + Send + Sync + 'static,
 		S: cpal::Sample,
 	{
-		// Produce a sinusoid of maximum amplitude.
-		let mut sample_clock = 0f32;
-		let channels = self.config.channels as usize;
-		let sample_rate = self.config.sample_rate.0 as f32;
-		//let mut generator = self.generator;
-		let mut next_value = move || {
-			sample_clock = (sample_clock + 1.0) % sample_rate;
-			(0.2 - 0.00001 * sample_clock).max(0.0) * (sample_clock * 440.0 * 2.0 * 3.141592 / sample_rate).sin()
-			//generator.generate()[0]
-		};
-		let stream = self.device.build_output_stream(
-			&self.config,
-			move |data: &mut [S], _: &cpal::OutputCallbackInfo| {
-				Self::write_data(data, channels, &mut next_value)
+		//use rand::Rng;
+		let channels = config.channels as usize;
+		let sample_rate = config.sample_rate.0;
+		generator.set_sample_rate(sample_rate);
+
+		let stream = device.build_output_stream(
+			&config,
+			move |output: &mut [S], _: &cpal::OutputCallbackInfo| {
+				//let mut rng = rand::thread_rng();
+				//Self::write_data(data, channels, &mut next_value)
+				for frame in output.chunks_mut(channels) {
+					let next_sample = generator.generate()[0];
+					//let next_sample = rng.gen();
+					let value: S = cpal::Sample::from::<f32>(&next_sample);
+					for sample in frame.iter_mut() {
+						*sample = value;
+					}
+				}
+				while let Some(msg) = rx.try_recv() {
+					println!("{:?}", msg);
+				}
 			},
 			|err| eprintln!("an error occurred on stream: {}", err),
 		)?;
 
-		//std::thread::sleep(std::time::Duration::from_millis(1000));
 		Ok(stream)
 	}
-	fn write_data<S>(output: &mut [S], channels: usize, next_sample: &mut dyn FnMut() -> f32)
-	where
-		S: cpal::Sample,
+	pub fn run<G>(mut self, generator: Box<G>) -> Result<cpal::Stream, anyhow::Error>
+	where G: Generator + SampleRated + Send + Sync + 'static
 	{
-		for frame in output.chunks_mut(channels) {
-			let value: S = cpal::Sample::from::<f32>(&next_sample());
-			for sample in frame.iter_mut() {
-				*sample = value;
-			}
+		let output_stream = match self.sample_format {
+			cpal::SampleFormat::F32 => Self::run_config::<G,f32>(self.config, self.device, generator, self.rx)?,
+			cpal::SampleFormat::I16 => Self::run_config::<G,i16>(self.config, self.device, generator, self.rx)?,
+			cpal::SampleFormat::U16 => Self::run_config::<G,u16>(self.config, self.device, generator, self.rx)?,
+		};
+		output_stream.play()?;
+		self.stream = Some(output_stream);
+
+		Ok(self.stream.unwrap())
+	}
+
+	fn dispatch_midi_in(&mut self, msg: midistream::Msg) {
+		use midistream::*;
+		match msg {
+			Msg::Simple(x) => match x {
+				SimpleMsg::NoteOn(y) => {
+					println!("Note on {:?}", y);
+				},
+				y => {
+					println!("{:?}", y);
+				},
+			},
+			Msg::Complex(x) => {
+				println!("Received {:?}", x);
+			},
+			Msg::Sysex(x) => {
+				println!("Received {:?}", x);
+			},
+		}
+	}
+
+	fn handle_midi_in(&mut self) {
+		if let Some(msg) = self.rx.recv() {
+			self.dispatch_midi_in(msg);
 		}
 	}
 }

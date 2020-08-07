@@ -1,7 +1,7 @@
 extern crate midir;
 extern crate midi;
 
-use crossbeam::channel::{Sender, Receiver};
+use crossbeam::channel::{Sender};
 use midistream::*;
 use midir::{MidiInput,
 //MidiOutput,
@@ -12,32 +12,27 @@ Ignore};
 
 pub struct InputThread {
 	connection: Option<MidiInputConnection<()>>,
-	tx: Sender<Msg>,
-	pub rx: Receiver<Msg>,
 }
 impl InputThread {
 	pub fn new() -> InputThread {
-		let (tx, rx) = crossbeam::channel::bounded(256);
 		InputThread {
 			connection: None,
-			tx: tx,
-			rx: rx,
 		}
 	}
 
-	pub fn run(&mut self) {
+	pub fn run(&mut self, tx: Sender<Msg>) {
 		let mut input = MidiInput::new("feosynth midi input").unwrap();
 		input.ignore(Ignore::None);
 		let in_port = &input.ports()[0];
 
 		let in_port_name = input.port_name(&in_port).unwrap();
-		let tx = self.tx.clone();
 		println!("Opening MIDI connection {}", in_port_name);
+		let tx1 = tx.clone();
 		let _conn_in = input.connect(&in_port, "feosynth-read-input", move |_stamp, message, _| {
 			let messages = MsgDecoder::new(message.iter().map(|x| *x));
 			for msg in messages {
 				match msg {
-					Ok(x) => { tx.send(x); },
+					Ok(x) => { tx1.send(x); },
 					_ => {},
 				};
 			}
