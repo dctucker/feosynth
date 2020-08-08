@@ -1,5 +1,4 @@
-use super::types::{SampleRate, Sample, Frequency, Seconds};
-use super::audio::SampleRated;
+use super::types::{SampleRated, SampleRate, Sample, Frequency, Seconds};
 
 //const SAMPLE_RATE: u64 = 96000;
 const ADSR_DIVISOR: u64 = 1;
@@ -34,6 +33,7 @@ use Stage::*;
 impl SampleRated for ADSR {
 	fn set_sample_rate(&mut self, sample_rate: SampleRate) {
 		self.sample_rate = sample_rate as Frequency / ADSR_DIVISOR as Frequency;
+		self.calc();
 	}
 }
 
@@ -115,7 +115,8 @@ impl Gate for ADSR {
 
 #[test]
 fn test_adsr() {
-	let mut adsr = ADSR::new(96000);
+	let mut adsr = ADSR::new();
+	adsr.set_sample_rate(96000);
 	assert_eq!(adsr.val, 0.);
 	adsr.gate_open();
 	adsr.run();

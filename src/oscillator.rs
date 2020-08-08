@@ -1,9 +1,9 @@
 use rand::Rng;
 use std::num::Wrapping;
 use std::f64::consts::PI;
+use std::convert::TryInto;
 
-use super::types::{SampleRate, Frequency, Sample};
-use super::audio::SampleRated;
+use super::types::{SampleRated, Generator, SampleRate, Frequency, Sample, MidiDispatcher};
 use super::adsr::*;
 use super::temperament::{Tuning,TuningData};
 
@@ -45,6 +45,7 @@ impl Counter {
 	}
 	fn set_freq(&mut self, f: Frequency) {
 		self.incr = Wrapping(self.calc_freq(f) as u32);
+		//println!("{}", self.incr);
 	}
 	/*
 	fn note_freq(temper: &Temperament, n: u8) -> Frequency {
@@ -91,7 +92,6 @@ struct WaveTable {
 
 impl WaveTable {
 	pub fn new(waveform: Waveforms) -> WaveTable {
-		println!("WaveTable::new");
 		let mut ret = WaveTable {
 			table_size: TABLE_SIZE,
 			table: vec![0.; TABLE_SIZE],
@@ -100,12 +100,17 @@ impl WaveTable {
 		ret
 	}
 	fn lookup(&self, phase: &mut Counter) -> Sample {
-		let y0: Sample = self.table[phase.phase.0 as usize];
-		let y1: Sample = self.table[1 + phase.phase.0 as usize];
+		let p0 = phase.int() as usize; phase.increment();
+		//let p1 = phase.int() as usize;
+		let y0: Sample = self.table[p0];
+		y0
+		/*
+		let y1: Sample = self.table[p1];
 		let f0: Sample = phase.frac();
 		let f1: Sample = 1. - f0;
-		phase.increment();
 		y0 * f1  +  y1 * f0
+		*/
+
 	}
 	fn setup_table(&mut self, waveform: Waveforms) {
 		let table_size = self.table_size;
@@ -224,9 +229,10 @@ pub struct Oscillator {
 
 impl SampleRated for Oscillator {
 	fn set_sample_rate(&mut self, sample_rate: SampleRate) {
-		for note in self.notes.iter_mut() {
-			note.set_sample_rate(sample_rate);
+		for note in (&mut self.notes).iter_mut() {
+			(*note).set_sample_rate(sample_rate);
 		}
+		self.retemper();
 	}
 }
 
@@ -247,13 +253,15 @@ impl Oscillator {
 		};
 		osc.retemper();
 		osc.active = true;
+		//osc.note_on(64,120);
 		osc
 	}
 	fn retemper(&mut self) {
 		println!("Oscillator::retemper");
 		self.temperament = super::temperament::TUNINGS[self.tuning_preset];
+		//println!("{}", self.temperament);
 		for n in 0..128 {
-			self.notes[n].phase.set_freq(self.temperament.lookup(n as i8));
+			(&mut self.notes[n]).phase.set_freq(self.temperament.lookup(n as i8));
 		}
 	}
 	fn note_off(&mut self, n: i8) {
@@ -299,7 +307,7 @@ impl Oscillator {
 		//self.notes[n].time  = 0;
 		let un = n as usize;
 		self.cur_note = un;
-		let note: &mut Note = &mut self.notes[n as usize];
+		let note: &mut Note = &mut self.notes[un];
 		note.num   = n;
 		note.amp_env.gate_open();
 		note.flt_env.gate_open();
@@ -322,8 +330,7 @@ impl Oscillator {
 
 		self.active = true;
 	}
-	fn do_adsr(&mut self, n: usize) {
-		let note = &mut self.notes[n];
+	fn do_adsr(note: &mut Note) {
 		note.amp = note.amp_env.run();
 		note.flt = note.flt_env.run();
 
@@ -335,9 +342,6 @@ impl Oscillator {
 	}
 }
 
-pub trait Generator {
-	fn generate(&mut self) -> [f32; 2];
-}
 
 impl Generator for Oscillator {
 	fn generate(&mut self) -> [f32; 2] {
@@ -345,19 +349,17 @@ impl Generator for Oscillator {
 		let mut left: Sample = 0.;
 		let right: Sample;
 
-		for n in self.low_note..self.high_note {
-			{
-				let note_down = self.notes[n].num != 0;
-				if note_down {
-					self.do_adsr(n);
-				}
+		let notes = &mut self.notes[self.low_note..self.high_note];
+		for note in notes.iter_mut() {
+			if note.num > 0 {
+				Self::do_adsr(note);
 			}
-			{
-				let note_down = self.notes[n].num != 0;
-				if note_down {
-					let note = &mut self.notes[n];
-					left += self.wf.lookup(&mut note.phase) * note.amp * note.vel;
-				}
+		}
+		for note in &mut self.notes[self.low_note..self.high_note] {
+			if note.num > 0 {
+				left += self.wf.lookup(&mut note.phase) * note.amp * note.vel;
+				//left += (2. * PI * note.phase.int() as f64 / TABLE_SIZE as f64).sin(); note.phase.increment();
+				//println!("{}", note.phase.phase.0);
 			}
 		}
 		self.clk += 1;
@@ -368,6 +370,35 @@ impl Generator for Oscillator {
 		right = left * 1.;// * self.pan.amp_r;
 		
 		[left as f32, right as f32]
+	}
+}
+impl MidiDispatcher for Oscillator {
+	fn dispatch_midi_in(&mut self, msg: &midistream::Msg) {
+		use midistream::*;
+		match msg {
+			Msg::Simple(x) => match x {
+				SimpleMsg::NoteOn(y) => {
+					println!("Note on {:?}", y);
+					let note: u8  = *y.note;
+					let value: u8 = *y.value;
+					self.note_on(note.try_into().unwrap(), value.try_into().unwrap());
+				},
+				SimpleMsg::NoteOff(y) => {
+					println!("Note off {:?}", y);
+					let note: u8  = *y.note;
+					self.note_off(note.try_into().unwrap());
+				},
+				y => {
+					println!("{:?}", y);
+				},
+			},
+			Msg::Complex(x) => {
+				println!("Received {:?}", x);
+			},
+			Msg::Sysex(x) => {
+				println!("Received {:?}", x);
+			},
+		}
 	}
 }
 
@@ -385,19 +416,53 @@ lazy_static! {
 
 #[test]
 fn test_oscillator() {
-	Oscillator::new(96000, Waveforms::Saw);
+	let rate = 96000;
+	let mut osc = Oscillator::new(Waveforms::Sine);
+	assert!(osc.notes[0].phase.dsr == 0.);
+	osc.set_sample_rate(rate);
+	assert!(osc.notes[0].phase.dsr > 0.);
+	assert!(osc.notes[64].phase.incr.0 > 0);
+	println!("incr = {}", osc.notes[64].phase.incr.0);
+	let v = osc.generate()[0]; println!("v = {}", v); assert!(v == 0.);
+
+	assert!(osc.notes[64].phase.phase.0 == 0);
+	assert!(osc.notes[64].down == false);
+	osc.note_on(64, 120);
+	assert!(osc.notes[64].down == true);
+	let v = osc.generate()[0]; println!("v = {}", v); assert!(v == 0.);
+	let v = osc.generate()[0]; println!("v = {}", v); assert!(v != 0.);
+	assert!(osc.notes[64].phase.phase.0 > 0);
+}
+
+#[test]
+fn test_wavetable() {
+	let rate = 96000;
+	let wt = WaveTable::new(Waveforms::Sine);
+	let mut c = Counter::new();
+	assert!(c.int() == 0);
+	c.set_sample_rate(rate);
+	c.set_freq(440.);
+	assert!(c.int() == 0);
+	let v = wt.lookup(&mut c) as f32; println!("v = {}", v); assert!(v == 0.);
+	let v = wt.lookup(&mut c) as f32; println!("v = {}", v); assert!(v != 0.);
 }
 
 #[test]
 fn test_counter() {
 	let rate = 96000;
 	assert_eq!(1 << 19, 524288);
-	let mut c = Counter::new(rate);
+	let mut c = Counter::new();
+	c.set_sample_rate(rate);
 	let size = TABLE_SIZE as u32;
-	c.set_freq(rate as Frequency / 4.);
+	println!("table size = {}", size);
+	c.set_freq(rate as Frequency / 8.);
 	assert_eq!(c.int(), 0);
-	c.increment(); assert_eq!(c.int(), size/4);
-	c.increment(); assert_eq!(c.int(), size/2);
-	c.increment(); assert_eq!(c.int(), 3*size/4);
+	c.increment(); assert_eq!(c.int(), size*1/8);
+	c.increment(); assert_eq!(c.int(), size*1/4);
+	c.increment(); assert_eq!(c.int(), size*3/8);
+	c.increment(); assert_eq!(c.int(), size*4/8);
+	c.increment(); assert_eq!(c.int(), size*5/8);
+	c.increment(); assert_eq!(c.int(), size*6/8);
+	c.increment(); assert_eq!(c.int(), size*7/8);
 	c.increment(); assert_eq!(c.int(), 0);
 }

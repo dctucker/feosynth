@@ -41,12 +41,13 @@ fn main() {
 	let interrupt = std::sync::Arc::new( std::sync::atomic::AtomicBool::new( false ) );
 	signal_hook::flag::register(signal_hook::SIGINT, std::sync::Arc::clone(&interrupt)).unwrap();
 
-	let osc = Box::new(crate::oscillator::Oscillator::new(crate::oscillator::Waveforms::Saw));
+	let osc = Box::new(crate::oscillator::Oscillator::new(crate::oscillator::Waveforms::Sine));
 	let mut midi = crate::midi::InputThread::new();
 	let sys = crate::audio::System::new();
 	println!("Sample format: {:?}", sys.sample_format());
 	println!("Config = {:?}", sys.config);
 
+	//let tx = sys.tx.clone(); tx.send(midistream::Msg::Simple(midistream::SimpleMsg::NoteOn(midistream::Note{channel: 1.into(), note: 64.into(), value: 120.into()})));
 	midi.run(sys.tx.clone());
 	let _stream = sys.run(osc).unwrap();
 	//println!("{:?}", stream);

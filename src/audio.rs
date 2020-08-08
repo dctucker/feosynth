@@ -1,13 +1,9 @@
 extern crate cpal;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use super::types::{SampleRate};
-use crate::oscillator::Generator;
+use super::types::{Generator, MidiDispatcher, SampleRated};
 use crossbeam::channel::{Receiver, Sender};
 
-pub trait SampleRated {
-	fn set_sample_rate(&mut self, sample_rate: SampleRate);
-}
 
 pub struct System {
 	device: cpal::Device,
@@ -39,7 +35,7 @@ impl System
 	}
 	fn run_config<G,S>(config: cpal::StreamConfig, device: cpal::Device, mut generator: Box<G>, rx: Receiver<midistream::Msg>) -> Result<cpal::Stream, anyhow::Error>
 	where
-		G: Generator + SampleRated + Send + Sync + 'static,
+		G: Generator + SampleRated + MidiDispatcher + Send + Sync + 'static,
 		S: cpal::Sample,
 	{
 		//use rand::Rng;
@@ -61,7 +57,7 @@ impl System
 					}
 				}
 				while let Some(msg) = rx.try_recv() {
-					println!("{:?}", msg);
+					generator.dispatch_midi_in(&msg);
 				}
 			},
 			|err| eprintln!("an error occurred on stream: {}", err),
@@ -70,7 +66,7 @@ impl System
 		Ok(stream)
 	}
 	pub fn run<G>(mut self, generator: Box<G>) -> Result<cpal::Stream, anyhow::Error>
-	where G: Generator + SampleRated + Send + Sync + 'static
+	where G: Generator + SampleRated + MidiDispatcher + Send + Sync + 'static
 	{
 		let output_stream = match self.sample_format {
 			cpal::SampleFormat::F32 => Self::run_config::<G,f32>(self.config, self.device, generator, self.rx)?,
@@ -82,31 +78,4 @@ impl System
 
 		Ok(self.stream.unwrap())
 	}
-
-	fn dispatch_midi_in(&mut self, msg: midistream::Msg) {
-		use midistream::*;
-		match msg {
-			Msg::Simple(x) => match x {
-				SimpleMsg::NoteOn(y) => {
-					println!("Note on {:?}", y);
-				},
-				y => {
-					println!("{:?}", y);
-				},
-			},
-			Msg::Complex(x) => {
-				println!("Received {:?}", x);
-			},
-			Msg::Sysex(x) => {
-				println!("Received {:?}", x);
-			},
-		}
-	}
-
-	fn handle_midi_in(&mut self) {
-		if let Some(msg) = self.rx.recv() {
-			self.dispatch_midi_in(msg);
-		}
-	}
 }
-

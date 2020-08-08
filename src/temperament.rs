@@ -1,6 +1,7 @@
+use std::fmt;
 use super::types::{Cents, Frequency};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub enum Tuning {
 	EquaTemp,
 	MeanTemp,
@@ -30,6 +31,18 @@ pub struct TuningData {
 	pub intervals  : [Frequency; 12],
 	pub freq_a : Frequency, lo_tt : Frequency, hi_tt : Frequency,
 	pub tuning : Tuning,
+}
+impl fmt::Display for TuningData {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        for n in 0..128 {
+            write!(fmt, "{}: {}, ", self.fund_table[n], self.freq_table[n])?;
+        }
+		write!(fmt, "\n")?;
+		for n in 0..12 {
+            write!(fmt, "{}, ", self.intervals[n])?;
+		}
+        Ok(())
+    }
 }
 
 fn pow2i(x: u32) -> Frequency {
