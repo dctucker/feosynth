@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0.32"
-cpal = "0.12.1"
+cpal = { version = "0.12.1", features = ["asio"] }
 lazy_static = "1.4.0"
 rand = "0.7.3"
 midir = "0.6.2"

@@ -3,21 +3,44 @@ extern crate cpal;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use super::types::{Generator, MidiDispatcher, SampleRated};
 use crossbeam::channel::{Receiver, Sender};
+use crate::midi::Msg;
 
+type Device = cpal::Device;
+type SampleFormat = cpal::SampleFormat;
+type Stream = cpal::Stream;
+type StreamConfig = cpal::StreamConfig;
 
 pub struct System {
-	device: cpal::Device,
-	sample_format: cpal::SampleFormat,
-	pub config: cpal::StreamConfig,
-	stream: Option<cpal::Stream>,
-	rx: Receiver<midistream::Msg>,
-	pub tx: Sender<midistream::Msg>,
+	device: Device,
+	sample_format: SampleFormat,
+	pub config: StreamConfig,
+	stream: Option<Stream>,
+	rx: Receiver<Msg>,
+	pub tx: Sender<Msg>,
 }
-impl System
-{
+impl System {
 	pub fn new() -> System {
-		let host = cpal::default_host();
-		let device = host.default_output_device().expect("no output device available");
+		let host;
+		let device;
+		if cfg!(target_os = "windows") {
+			host = match cpal::host_from_id(cpal::HostId::Asio) {
+				Ok(h) => { h },
+				_ => { cpal::default_host() },
+			};
+		} else {
+			host = cpal::default_host();
+		}
+		device = host.default_output_device().expect("no output device available");
+		/*
+		device = match host.default_output_device() {
+			Some(d) => { d },
+			_ => {
+				let host = cpal::default_host();
+				host.default_output_device().expect("no output device available")
+			},
+		};
+		*/
+
 		let config = device.default_output_config().expect("no default config available");
 		let (tx, rx) = crossbeam::channel::bounded(256);
 
@@ -33,7 +56,7 @@ impl System
 	pub fn sample_format(&self) -> cpal::SampleFormat {
 		self.sample_format
 	}
-	fn run_config<G,S>(config: cpal::StreamConfig, device: cpal::Device, mut generator: Box<G>, rx: Receiver<midistream::Msg>) -> Result<cpal::Stream, anyhow::Error>
+	fn run_config<G,S>(config: StreamConfig, device: Device, mut generator: Box<G>, rx: Receiver<midistream::Msg>) -> Result<Stream, anyhow::Error>
 	where
 		G: Generator + SampleRated + MidiDispatcher + Send + Sync + 'static,
 		S: cpal::Sample,

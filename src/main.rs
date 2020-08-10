@@ -57,7 +57,7 @@ fn main() {
 		std::thread::sleep(std::time::Duration::from_millis(500));
 		if interrupt.swap(false, std::sync::atomic::Ordering::Relaxed) {
 			println!("Caught interrupt, exiting outer loop");
-			break;
+			break 'outer;
 		}
 	};
 }

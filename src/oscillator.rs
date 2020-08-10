@@ -55,9 +55,6 @@ impl Counter {
 		self.incr = Self::note_freq(freq) as u32;
 	}
 	*/
-	fn set_shift(&mut self, i: TablePos){
-		self.bits.0 = i;
-	}
 	fn increment(&mut self) {
 		self.phase += self.incr;
 	}
@@ -67,9 +64,16 @@ impl Counter {
 	fn int(&self) -> TablePos {
 		self.phase.0 >> self.bits.0
 	}
+
+	#[allow(dead_code)]
+	fn set_shift(&mut self, i: TablePos){
+		self.bits.0 = i;
+	}
+	#[allow(dead_code)]
 	fn modulo(&self) -> TablePos { // remainder as integer component
 		self.phase.0 & (( 2 << self.bits.0 ) - 1)
 	}
+	#[allow(dead_code)]
 	fn frac(&self) -> f64 { // remainder as a fraction
 		self.modulo() as f64 / (1 << self.bits.0) as f64
 	}
@@ -104,6 +108,7 @@ impl WaveTable {
 		//let p1 = phase.int() as usize;
 		let y0: Sample = self.table[p0];
 		y0
+		//unsafe { let y0: &Sample = self.table.get_unchecked(p0); *y0 }
 		/*
 		let y1: Sample = self.table[p1];
 		let f0: Sample = phase.frac();
@@ -456,7 +461,8 @@ fn test_counter() {
 	let size = TABLE_SIZE as u32;
 	println!("table size = {}", size);
 	c.set_freq(rate as Frequency / 8.);
-	assert_eq!(c.int(), 0);
+	assert!(c.int() == 0);
+	assert!(c.modulo() == 0);
 	c.increment(); assert_eq!(c.int(), size*1/8);
 	c.increment(); assert_eq!(c.int(), size*1/4);
 	c.increment(); assert_eq!(c.int(), size*3/8);

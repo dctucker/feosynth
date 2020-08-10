@@ -54,9 +54,6 @@ fn pow3i(x: u32) -> Frequency {
 fn pow2(x: Frequency) -> Frequency {
 	(2.0 as Frequency).powf(x)
 }
-fn pow3(x: Frequency) -> Frequency {
-	(3.0 as Frequency).powf(x)
-}
 fn pow5(x: Frequency) -> Frequency {
 	(5.0 as Frequency).powf(x)
 }
@@ -384,8 +381,6 @@ impl Index<Tuning> for Tunings<TuningData> {
 		}
 	}
 }
-
-type Temperament = Tuning;
 
 lazy_static! {
 	pub static ref TUNINGS: Tunings<TuningData> = Tunings::new();

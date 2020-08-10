@@ -2,7 +2,6 @@
 extern crate lazy_static;
 extern crate crossbeam;
 
-
 pub mod types;
 pub mod audio;
 pub mod midi;
