@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use rand::Rng;
 use std::num::Wrapping;
 use std::f64::consts::PI;
@@ -14,7 +15,7 @@ const RESOLUTION: f64 = (1_i64 << 32) as f64;
 
 type TablePos = u32;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct Counter {
 	phase: Wrapping<TablePos>,
 	incr: Wrapping<TablePos>,
@@ -170,7 +171,7 @@ impl WaveTable {
 }
 
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Debug)]
 struct Note {
 	phase: Counter,
 	amp: Sample,
@@ -224,18 +225,21 @@ pub struct Oscillator {
 	tuning_preset: Tuning,
 	temperament: TuningData,
 	sus: i8, poly: usize,
-	low_note: usize, high_note: usize, cur_note: usize,
+	//low_note: usize, high_note: usize, cur_note: usize,
 	//hi_assign: usize, lo_assign: usize,
 	//lfof: f64,
 	//lfo2lp: f64, lfo2hp: f64, lfo2amp: f64, env2lp: f64,
 
-	notes: Vec<Note>,
+	notes: Vec<Option<Box<Note>>>,
+	active_notes: VecDeque<Box<Note>>,
 }
 
 impl SampleRated for Oscillator {
 	fn set_sample_rate(&mut self, sample_rate: SampleRate) {
-		for note in (&mut self.notes).iter_mut() {
-			(*note).set_sample_rate(sample_rate);
+		for note1 in (&mut self.notes).iter_mut() {
+			for note in note1.iter_mut() {
+				note.set_sample_rate(sample_rate);
+			}
 		}
 		self.retemper();
 	}
@@ -244,15 +248,14 @@ impl SampleRated for Oscillator {
 impl Oscillator {
 	pub fn new(waveform: Waveforms) -> Oscillator {
 		let mut osc = Oscillator {
-			notes: vec![Note::new(); 128],
+			notes: vec![Some(Box::new(Note::new())); 128],
+			active_notes: VecDeque::new(),
 			tuning_preset: Tuning::EquaTemp,
 			temperament: TuningData::new(Tuning::EquaTemp),
 			poly: 0,
-			low_note: 0,
-			high_note: 127,
+			//low_note: 0, high_note: 127, cur_note: 0,
 			sus: 0,
 			active: false,
-			cur_note: 0,
 			clk: 0,
 			wf: WaveTable::new(waveform),
 		};
@@ -265,26 +268,45 @@ impl Oscillator {
 		println!("Oscillator::retemper");
 		self.temperament = super::temperament::TUNINGS[self.tuning_preset];
 		//println!("{}", self.temperament);
-		for n in 0..128 {
-			(&mut self.notes[n]).phase.set_freq(self.temperament.lookup(n as i8));
+		let mut n: usize = 0;
+		for note1 in self.notes.iter_mut() {
+			for note in note1.iter_mut() {
+				note.num = n as i8;
+				note.phase.set_freq(self.temperament.lookup(n as i8));
+				println!("{:?}", note);
+			}
+			n += 1;
 		}
 	}
 	fn note_off(&mut self, n: i8) {
 		self.poly -= 1;
-		let note: &mut Note = &mut self.notes[n as usize];
-		note.down = false;
-		if self.sus < 64 {
-			note.amp_env.gate_close();
-			note.flt_env.gate_close();
+		let un = n as usize;
+		//let note: &mut Note = &mut self.notes[un].unwrap();
+
+		let mut n_off = 0;
+		for note in self.active_notes.iter() {
+			if note.num == n {
+				let mut note = self.active_notes.remove(n_off as usize).unwrap();
+
+				note.down = false;
+				if self.sus < 64 {
+					note.amp_env.gate_close();
+					note.flt_env.gate_close();
+				}
+				self.notes[un].replace(note);
+				break;
+			}
+			n_off += 1;
 		}
 
+		/*
 		if self.high_note == n as usize {
-			while self.high_note >  0  && self.notes[self.high_note].num == 0 {
+			while self.high_note >  0  && self.notes[self.high_note].unwrap().num == 0 {
 				self.high_note -= 1;
 			}
 		}
 		if self.low_note  == n as usize {
-			while self.low_note  < 127 && self.notes[self.low_note ].num == 0 {
+			while self.low_note  < 127 && self.notes[self.low_note ].unwrap().num == 0 {
 				self.low_note += 1;
 			}
 		}
@@ -305,14 +327,15 @@ impl Oscillator {
 			c1 -= 1;
 			c2 += 1;
 		}
+		*/
 	}
 	fn note_on(&mut self, n: i8, v: i8) {
 		//self.notes[n].freq  = calc_freq(n); // this should already be precomputed.
 		//self.notes[n].phase = 0; // let the piano class do this itself.	
 		//self.notes[n].time  = 0;
 		let un = n as usize;
-		self.cur_note = un;
-		let note: &mut Note = &mut self.notes[un];
+		//self.cur_note = un;
+		let mut note: Box<Note> = self.notes[un].take().unwrap();
 		note.num   = n;
 		note.amp_env.gate_open();
 		note.flt_env.gate_open();
@@ -324,16 +347,20 @@ impl Oscillator {
 
 		if self.poly < MAX_POLY - 1 { self.poly += 1; }
 
+		self.active_notes.push_front(note);
+		/*
 		if self.high_note < un {
 			self.high_note = un;
 		}
 		if self.low_note  > un {
 			self.low_note  = un;
 		}
+		*/
 
 		// self.calc_chord_ratio();
 
 		self.active = true;
+		println!("{}", self.active_notes.len());
 	}
 	fn do_adsr(note: &mut Note) {
 		note.amp = note.amp_env.run();
@@ -354,20 +381,15 @@ impl Generator for Oscillator {
 		let mut left: Sample = 0.;
 		let right: Sample;
 
-		let notes = &mut self.notes[self.low_note..self.high_note];
-		for note in notes.iter_mut() {
-			if note.num > 0 {
-				Self::do_adsr(note);
-			}
-		}
-		for note in &mut self.notes[self.low_note..self.high_note] {
-			if note.num > 0 {
-				left += self.wf.lookup(&mut note.phase) * note.amp * note.vel;
-				//left += (2. * PI * note.phase.int() as f64 / TABLE_SIZE as f64).sin(); note.phase.increment();
-				//println!("{}", note.phase.phase.0);
-			}
+		for note in self.active_notes.iter_mut() {
+			Self::do_adsr(note);
+			left += self.wf.lookup(&mut note.phase) * note.amp * note.vel;
 		}
 		self.clk += 1;
+
+		if self.clk % 96000 == 0 {
+			println!("{:?}", self.active_notes);
+		}
 		
 		//o = applyEffects(left);
 		//o = left;

@@ -20,8 +20,9 @@ pub struct System {
 }
 impl System {
 	pub fn new() -> System {
-		let host;
+		//let host;
 		let device;
+		/*
 		if cfg!(target_os = "windows") {
 			host = match cpal::host_from_id(cpal::HostId::Asio) {
 				Ok(h) => { h },
@@ -31,6 +32,8 @@ impl System {
 			host = cpal::default_host();
 		}
 		device = host.default_output_device().expect("no output device available");
+		*/
+		device = cpal::default_host().default_output_device().expect("no output device available");
 		/*
 		device = match host.default_output_device() {
 			Some(d) => { d },

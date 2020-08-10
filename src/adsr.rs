@@ -18,7 +18,7 @@ enum Stage {
 	Release
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct ADSR {
 	stage : Stage,
 	val: Sample,
